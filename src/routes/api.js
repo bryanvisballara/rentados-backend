@@ -6,6 +6,13 @@ const router = express.Router();
 
 router.get('/collections', async (_req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        error: 'MongoDB no conectado',
+        hint: 'Configura MONGO_URI en las variables de entorno',
+      });
+    }
+
     const counts = await Promise.all(
       Object.entries(models).map(async ([name, Model]) => {
         const count = await Model.countDocuments();

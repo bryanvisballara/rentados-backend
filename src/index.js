@@ -47,10 +47,15 @@ app.use((err, _req, res, _next) => {
 });
 
 async function start() {
-  await connectDB();
   app.listen(PORT, () => {
     console.log(`Rentados API escuchando en puerto ${PORT}`);
   });
+
+  try {
+    await connectDB();
+  } catch (err) {
+    console.error('MongoDB no conectó al iniciar (reintentará en requests):', err.message);
+  }
 }
 
 start().catch((err) => {
