@@ -1,0 +1,17 @@
+module.exports = {
+  User: require('./User'),
+  Organization: require('./Organization'),
+  Building: require('./Building'),
+  Unit: require('./Unit'),
+  Resident: require('./Resident'),
+  ServiceCategory: require('./ServiceCategory'),
+  ServiceProvider: require('./ServiceProvider'),
+  Service: require('./Service'),
+  ServiceRequest: require('./ServiceRequest'),
+  Facility: require('./Facility'),
+  FacilityBooking: require('./FacilityBooking'),
+  Announcement: require('./Announcement'),
+  Message: require('./Message'),
+  QuickAction: require('./QuickAction'),
+  EmergencyContact: require('./EmergencyContact'),
+};
