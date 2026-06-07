@@ -277,3 +277,78 @@
   border-color: transparent;
   color: var(--color-text-muted);
 }
+
+.admin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(20, 28, 24, 0.45);
+}
+
+.admin-modal {
+  width: min(100%, 28rem);
+  padding: 1.5rem;
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+}
+
+.admin-modal h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
+}
+
+.admin-modal p {
+  margin: 0.5rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.admin-modal__detail {
+  font-size: 0.875rem !important;
+}
+
+.admin-modal__hint {
+  font-size: 0.8125rem !important;
+}
+
+.admin-modal__error {
+  color: #8a2c2c !important;
+}
+
+.admin-modal__errors {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: #fff7f7;
+  border: 1px solid #f0d4d4;
+}
+
+.admin-modal__errors ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
+  color: #6b2d2d;
+}
+
+.admin-modal__spinner {
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 1rem auto;
+  border: 3px solid #dceee4;
+  border-top-color: var(--color-green);
+  border-radius: 50%;
+  animation: admin-spin 0.8s linear infinite;
+}
+
+@keyframes admin-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

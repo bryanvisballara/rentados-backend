@@ -61,7 +61,7 @@ export default function TowersPage() {
   const [savingBulk, setSavingBulk] = useState(false);
   const [replicateSourceId, setReplicateSourceId] = useState('');
   const [replicateTargetIds, setReplicateTargetIds] = useState([]);
-  const [replicating, setReplicating] = useState(false);
+  const [replicateModal, setReplicateModal] = useState(null);
   const replicateSelectAllRef = useRef(null);
   const [editingTowerId, setEditingTowerId] = useState(null);
   const [editingUnitId, setEditingUnitId] = useState(null);
@@ -219,39 +219,57 @@ export default function TowersPage() {
   }
 
   function toggleReplicateTarget(towerId) {
+    const id = String(towerId);
     setReplicateTargetIds((prev) =>
-      prev.includes(towerId) ? prev.filter((id) => id !== towerId) : [...prev, towerId]
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
   }
 
   function toggleAllReplicateTargets(checked) {
-    setReplicateTargetIds(checked ? targetTowerOptions.map((t) => t._id) : []);
+    setReplicateTargetIds(checked ? targetTowerOptions.map((t) => String(t._id)) : []);
+  }
+
+  function closeReplicateModal() {
+    if (replicateModal?.status === 'loading') return;
+    setReplicateModal(null);
   }
 
   async function replicateTowerUnits(e) {
     e.preventDefault();
     setError('');
     setSuccess('');
-    setReplicating(true);
+
+    const sourceTower = towers.find((t) => String(t._id) === replicateSourceId);
+    const targetNames = targetTowerOptions
+      .filter((t) => replicateTargetIds.includes(String(t._id)))
+      .map((t) => t.name);
+
+    setReplicateModal({
+      status: 'loading',
+      unitCount: sourceUnits.length,
+      towerCount: replicateTargetIds.length,
+      sourceName: sourceTower?.name || 'Torre origen',
+      targetNames,
+    });
 
     try {
       const data = await adminApi.units.replicateTower({
         sourceTowerId: replicateSourceId,
-        targetTowerIds: replicateTargetIds,
+        targetTowerIds: replicateTargetIds.map(String),
         skipExisting: true,
       });
 
-      setSuccess(
-        `Replicación completada: ${data.created} unidad(es) creada(s)` +
-          (data.skipped ? `, ${data.skipped} ya existían` : '') +
-          ` desde ${data.sourceTower} hacia ${data.targetTowers.join(', ')}.`
-      );
+      setReplicateModal({
+        status: 'success',
+        data,
+      });
       setReplicateTargetIds([]);
       await load();
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setReplicating(false);
+      setReplicateModal({
+        status: 'error',
+        message: err.message || 'No se pudo completar la replicación',
+      });
     }
   }
 
@@ -268,9 +286,9 @@ export default function TowersPage() {
     [towers, replicateSourceId]
   );
   const allTargetsSelected =
-    targetTowerOptions.length > 0 && replicateTargetIds.length === targetTowerOptions.length;
-  const someTargetsSelected =
-    replicateTargetIds.length > 0 && replicateTargetIds.length < targetTowerOptions.length;
+    targetTowerOptions.length > 0 &&
+    targetTowerOptions.every((t) => replicateTargetIds.includes(String(t._id)));
+  const someTargetsSelected = replicateTargetIds.length > 0 && !allTargetsSelected;
 
   useEffect(() => {
     if (replicateSelectAllRef.current) {
@@ -279,7 +297,7 @@ export default function TowersPage() {
   }, [someTargetsSelected]);
 
   useEffect(() => {
-    setReplicateTargetIds((prev) => prev.filter((id) => id !== replicateSourceId));
+    setReplicateTargetIds((prev) => prev.filter((id) => id !== String(replicateSourceId)));
   }, [replicateSourceId]);
 
   return (
@@ -617,13 +635,13 @@ export default function TowersPage() {
                   {targetTowerOptions.map((t) => (
                     <tr
                       key={t._id}
-                      className={replicateTargetIds.includes(t._id) ? 'is-selected' : ''}
+                      className={replicateTargetIds.includes(String(t._id)) ? 'is-selected' : ''}
                     >
                       <td className="admin-table__check">
                         <label className="admin-checkbox admin-checkbox--table">
                           <input
                             type="checkbox"
-                            checked={replicateTargetIds.includes(t._id)}
+                            checked={replicateTargetIds.includes(String(t._id))}
                             onChange={() => toggleReplicateTarget(t._id)}
                             aria-label={`Replicar en ${t.name}`}
                           />
@@ -657,19 +675,107 @@ export default function TowersPage() {
               type="submit"
               className="admin-btn"
               disabled={
-                replicating ||
+                replicateModal?.status === 'loading' ||
                 !replicateSourceId ||
                 !replicateTargetIds.length ||
                 !sourceUnits.length
               }
             >
-              {replicating
-                ? 'Replicando…'
-                : `Replicar ${sourceUnits.length} unidad(es) en ${replicateTargetIds.length} torre(s)`}
+              {`Replicar ${sourceUnits.length} unidad(es) en ${replicateTargetIds.length} torre(s)`}
             </button>
           </div>
         </form>
       </div>
+
+      {replicateModal && (
+        <div
+          className="admin-modal-overlay"
+          role="presentation"
+          onClick={closeReplicateModal}
+        >
+          <div
+            className="admin-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="replicate-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {replicateModal.status === 'loading' && (
+              <>
+                <h3 id="replicate-modal-title">Replicando unidades</h3>
+                <div className="admin-modal__spinner" aria-hidden="true" />
+                <p>
+                  Copiando <strong>{replicateModal.unitCount}</strong> unidad(es) de{' '}
+                  <strong>{replicateModal.sourceName}</strong> hacia{' '}
+                  <strong>{replicateModal.targetNames.join(', ')}</strong>.
+                </p>
+                <p className="admin-modal__hint">Esto puede tardar unos segundos…</p>
+              </>
+            )}
+
+            {replicateModal.status === 'success' && (
+              <>
+                <h3 id="replicate-modal-title">Replicación completada</h3>
+                <p>
+                  <strong>{replicateModal.data.created}</strong> unidad(es) creada(s)
+                  {replicateModal.data.skipped
+                    ? `, ${replicateModal.data.skipped} ya existían y se omitieron`
+                    : ''}
+                  .
+                </p>
+                <p className="admin-modal__detail">
+                  Origen: {replicateModal.data.sourceTower} → Destino:{' '}
+                  {replicateModal.data.targetTowers.join(', ')}
+                </p>
+                {replicateModal.data.errors?.length > 0 && (
+                  <div className="admin-modal__errors">
+                    <p>{replicateModal.data.errors.length} unidad(es) no se pudieron crear:</p>
+                    <ul>
+                      {replicateModal.data.errors.slice(0, 5).map((item, index) => (
+                        <li key={`${item.number}-${index}`}>
+                          {item.tower} — {item.number}: {item.error}
+                        </li>
+                      ))}
+                    </ul>
+                    {replicateModal.data.errors.length > 5 && (
+                      <p className="admin-modal__hint">
+                        Y {replicateModal.data.errors.length - 5} error(es) más.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {replicateModal.data.created === 0 && !replicateModal.data.skipped && (
+                  <p className="admin-modal__hint">
+                    No se creó ninguna unidad. Verifica que la torre destino no tenga ya los mismos
+                    números o revisa los errores arriba.
+                  </p>
+                )}
+                <div className="admin-actions" style={{ marginTop: '1.25rem' }}>
+                  <button type="button" className="admin-btn" onClick={closeReplicateModal}>
+                    Cerrar
+                  </button>
+                </div>
+              </>
+            )}
+
+            {replicateModal.status === 'error' && (
+              <>
+                <h3 id="replicate-modal-title">No se pudo replicar</h3>
+                <p className="admin-modal__error">{replicateModal.message}</p>
+                <p className="admin-modal__hint">
+                  Revisa que el backend esté corriendo (<code>npm run dev</code>) y que tengas
+                  sesión activa en el conjunto correcto.
+                </p>
+                <div className="admin-actions" style={{ marginTop: '1.25rem' }}>
+                  <button type="button" className="admin-btn" onClick={closeReplicateModal}>
+                    Cerrar
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="admin-card admin-table-wrap">
         <h2>Torres registradas</h2>

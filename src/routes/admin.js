@@ -319,49 +319,76 @@ router.post('/units/replicate-tower', async (req, res) => {
     const sourceUnits = await Unit.find({
       buildingId: building._id,
       towerId: sourceTower._id,
-    }).sort({ floor: 1, number: 1 });
+    })
+      .sort({ floor: 1, number: 1 })
+      .lean();
 
     if (!sourceUnits.length) {
       return res.status(400).json({ error: 'La torre origen no tiene unidades para replicar' });
     }
 
-    let created = 0;
+    const sourceNumbers = sourceUnits.map((u) => u.number);
+    const existingKeys = new Set();
+
+    if (skipExisting) {
+      const existing = await Unit.find({
+        buildingId: building._id,
+        towerId: { $in: targetTowers.map((t) => t._id) },
+        number: { $in: sourceNumbers },
+      })
+        .select('towerId number')
+        .lean();
+
+      for (const unit of existing) {
+        existingKeys.add(`${unit.towerId.toString()}:${unit.number}`);
+      }
+    }
+
+    const toCreate = [];
     let skipped = 0;
-    const errors = [];
 
     for (const targetTower of targetTowers) {
       for (const sourceUnit of sourceUnits) {
-        if (skipExisting) {
-          const exists = await Unit.exists({
-            buildingId: building._id,
-            towerId: targetTower._id,
-            number: sourceUnit.number,
-          });
-          if (exists) {
-            skipped += 1;
-            continue;
-          }
+        const key = `${targetTower._id.toString()}:${sourceUnit.number}`;
+        if (skipExisting && existingKeys.has(key)) {
+          skipped += 1;
+          continue;
         }
 
-        try {
-          await Unit.create({
-            organizationId: building.organizationId,
-            buildingId: building._id,
-            towerId: targetTower._id,
-            tower: targetTower.name,
-            number: sourceUnit.number,
-            floor: sourceUnit.floor,
-            type: sourceUnit.type,
-            areaSqm: sourceUnit.areaSqm,
-            adminStatus: 'current',
-          });
-          created += 1;
-        } catch (err) {
-          errors.push({
-            tower: targetTower.name,
-            number: sourceUnit.number,
-            error: err.message,
-          });
+        toCreate.push({
+          organizationId: building.organizationId,
+          buildingId: building._id,
+          towerId: targetTower._id,
+          tower: targetTower.name,
+          number: sourceUnit.number,
+          floor: sourceUnit.floor,
+          type: sourceUnit.type,
+          areaSqm: sourceUnit.areaSqm,
+          adminStatus: 'current',
+        });
+      }
+    }
+
+    let created = 0;
+    const errors = [];
+
+    if (toCreate.length) {
+      try {
+        const inserted = await Unit.insertMany(toCreate, { ordered: false });
+        created = inserted.length;
+      } catch (err) {
+        if (err.name === 'MongoBulkWriteError') {
+          created = err.insertedDocs?.length ?? err.result?.nInserted ?? 0;
+          for (const writeError of err.writeErrors || []) {
+            const doc = toCreate[writeError.index];
+            errors.push({
+              tower: doc?.tower,
+              number: doc?.number,
+              error: writeError.errmsg || writeError.message,
+            });
+          }
+        } else {
+          throw err;
         }
       }
     }
