@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { adminApi } from '../../api/client';
 import '../admin.css';
 
@@ -59,6 +59,10 @@ export default function TowersPage() {
   const [bulkTowerId, setBulkTowerId] = useState('');
   const [bulkRows, setBulkRows] = useState([]);
   const [savingBulk, setSavingBulk] = useState(false);
+  const [replicateSourceId, setReplicateSourceId] = useState('');
+  const [replicateTargetIds, setReplicateTargetIds] = useState([]);
+  const [replicating, setReplicating] = useState(false);
+  const replicateSelectAllRef = useRef(null);
   const [editingTowerId, setEditingTowerId] = useState(null);
   const [editingUnitId, setEditingUnitId] = useState(null);
 
@@ -214,9 +218,69 @@ export default function TowersPage() {
     }
   }
 
+  function toggleReplicateTarget(towerId) {
+    setReplicateTargetIds((prev) =>
+      prev.includes(towerId) ? prev.filter((id) => id !== towerId) : [...prev, towerId]
+    );
+  }
+
+  function toggleAllReplicateTargets(checked) {
+    setReplicateTargetIds(checked ? targetTowerOptions.map((t) => t._id) : []);
+  }
+
+  async function replicateTowerUnits(e) {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setReplicating(true);
+
+    try {
+      const data = await adminApi.units.replicateTower({
+        sourceTowerId: replicateSourceId,
+        targetTowerIds: replicateTargetIds,
+        skipExisting: true,
+      });
+
+      setSuccess(
+        `Replicación completada: ${data.created} unidad(es) creada(s)` +
+          (data.skipped ? `, ${data.skipped} ya existían` : '') +
+          ` desde ${data.sourceTower} hacia ${data.targetTowers.join(', ')}.`
+      );
+      setReplicateTargetIds([]);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setReplicating(false);
+    }
+  }
+
   const selectedBulkTower = towers.find((t) => t._id === bulkTowerId);
   const existingBulkCount = bulkRows.filter((row) => row.existing).length;
   const newBulkCount = bulkRows.filter((row) => !row.existing && row.number.trim()).length;
+
+  const sourceUnits = useMemo(
+    () => getUnitsForTower(replicateSourceId, units),
+    [replicateSourceId, units]
+  );
+  const targetTowerOptions = useMemo(
+    () => towers.filter((t) => t._id !== replicateSourceId),
+    [towers, replicateSourceId]
+  );
+  const allTargetsSelected =
+    targetTowerOptions.length > 0 && replicateTargetIds.length === targetTowerOptions.length;
+  const someTargetsSelected =
+    replicateTargetIds.length > 0 && replicateTargetIds.length < targetTowerOptions.length;
+
+  useEffect(() => {
+    if (replicateSelectAllRef.current) {
+      replicateSelectAllRef.current.indeterminate = someTargetsSelected;
+    }
+  }, [someTargetsSelected]);
+
+  useEffect(() => {
+    setReplicateTargetIds((prev) => prev.filter((id) => id !== replicateSourceId));
+  }, [replicateSourceId]);
 
   return (
     <div className="admin-page">
@@ -493,6 +557,118 @@ export default function TowersPage() {
             </div>
           </form>
         )}
+      </div>
+
+      <div className="admin-card">
+        <h2>Replicar unidades entre torres</h2>
+        <p className="admin-empty" style={{ marginTop: 0 }}>
+          Ideal para conjuntos BIS con torres idénticas: copia todos los apartamentos de una torre ya
+          configurada hacia otras torres con los mismos números y pisos. Solo cambia la torre asignada.
+        </p>
+
+        <form onSubmit={replicateTowerUnits}>
+          <div className="admin-form" style={{ marginTop: '1rem' }}>
+            <label>
+              Torre origen (ya configurada)
+              <select
+                value={replicateSourceId}
+                onChange={(e) => setReplicateSourceId(e.target.value)}
+                required
+              >
+                <option value="">Seleccionar torre</option>
+                {towers.map((t) => (
+                  <option key={t._id} value={t._id}>
+                    {t.name} ({getUnitsForTower(t._id, units).length} unidades)
+                  </option>
+                ))}
+              </select>
+            </label>
+            {replicateSourceId && (
+              <label>
+                Apartamentos a copiar
+                <input value={`${sourceUnits.length} unidad(es)`} readOnly />
+              </label>
+            )}
+          </div>
+
+          {replicateSourceId && targetTowerOptions.length > 0 && (
+            <div className="admin-table-wrap" style={{ marginTop: '1rem' }}>
+              <table className="admin-table admin-table--selectable">
+                <thead>
+                  <tr>
+                    <th className="admin-table__check">
+                      <label className="admin-checkbox admin-checkbox--table">
+                        <input
+                          ref={replicateSelectAllRef}
+                          type="checkbox"
+                          checked={allTargetsSelected}
+                          onChange={(e) => toggleAllReplicateTargets(e.target.checked)}
+                          aria-label="Seleccionar todas las torres destino"
+                        />
+                      </label>
+                    </th>
+                    <th>Torre destino</th>
+                    <th>Código</th>
+                    <th>Pisos</th>
+                    <th>Unidades actuales</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {targetTowerOptions.map((t) => (
+                    <tr
+                      key={t._id}
+                      className={replicateTargetIds.includes(t._id) ? 'is-selected' : ''}
+                    >
+                      <td className="admin-table__check">
+                        <label className="admin-checkbox admin-checkbox--table">
+                          <input
+                            type="checkbox"
+                            checked={replicateTargetIds.includes(t._id)}
+                            onChange={() => toggleReplicateTarget(t._id)}
+                            aria-label={`Replicar en ${t.name}`}
+                          />
+                        </label>
+                      </td>
+                      <td>{t.name}</td>
+                      <td>{t.code}</td>
+                      <td>{t.floors || '—'}</td>
+                      <td>{getUnitsForTower(t._id, units).length}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {replicateSourceId && !targetTowerOptions.length && (
+            <p className="admin-empty" style={{ marginTop: '1rem' }}>
+              Crea al menos otra torre para poder replicar apartamentos.
+            </p>
+          )}
+
+          {replicateSourceId && sourceUnits.length === 0 && (
+            <p className="admin-empty" style={{ marginTop: '1rem' }}>
+              La torre origen no tiene unidades. Configúrala primero en el formulario de arriba.
+            </p>
+          )}
+
+          <div className="admin-actions" style={{ marginTop: '1rem' }}>
+            <button
+              type="submit"
+              className="admin-btn"
+              disabled={
+                replicating ||
+                !replicateSourceId ||
+                !replicateTargetIds.length ||
+                !sourceUnits.length
+              }
+            >
+              {replicating
+                ? 'Replicando…'
+                : `Replicar ${sourceUnits.length} unidad(es) en ${replicateTargetIds.length} torre(s)`}
+            </button>
+          </div>
+        </form>
       </div>
 
       <div className="admin-card admin-table-wrap">

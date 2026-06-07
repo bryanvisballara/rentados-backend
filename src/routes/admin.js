@@ -286,6 +286,99 @@ router.post('/units/bulk', async (req, res) => {
   }
 });
 
+router.post('/units/replicate-tower', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
+
+    const { sourceTowerId, targetTowerIds, skipExisting = true } = req.body;
+
+    if (!sourceTowerId || !Array.isArray(targetTowerIds) || !targetTowerIds.length) {
+      return res.status(400).json({ error: 'Torre origen y al menos una torre destino son requeridas' });
+    }
+
+    const sourceTower = await Tower.findOne({ _id: sourceTowerId, buildingId: building._id });
+    if (!sourceTower) return res.status(404).json({ error: 'Torre origen no encontrada' });
+
+    const uniqueTargets = [...new Set(targetTowerIds.map(String))].filter(
+      (id) => id !== sourceTowerId.toString()
+    );
+    if (!uniqueTargets.length) {
+      return res.status(400).json({ error: 'Selecciona torres destino distintas a la torre origen' });
+    }
+
+    const targetTowers = await Tower.find({
+      _id: { $in: uniqueTargets },
+      buildingId: building._id,
+    });
+
+    if (targetTowers.length !== uniqueTargets.length) {
+      return res.status(400).json({ error: 'Una o más torres destino no pertenecen a este conjunto' });
+    }
+
+    const sourceUnits = await Unit.find({
+      buildingId: building._id,
+      towerId: sourceTower._id,
+    }).sort({ floor: 1, number: 1 });
+
+    if (!sourceUnits.length) {
+      return res.status(400).json({ error: 'La torre origen no tiene unidades para replicar' });
+    }
+
+    let created = 0;
+    let skipped = 0;
+    const errors = [];
+
+    for (const targetTower of targetTowers) {
+      for (const sourceUnit of sourceUnits) {
+        if (skipExisting) {
+          const exists = await Unit.exists({
+            buildingId: building._id,
+            towerId: targetTower._id,
+            number: sourceUnit.number,
+          });
+          if (exists) {
+            skipped += 1;
+            continue;
+          }
+        }
+
+        try {
+          await Unit.create({
+            organizationId: building.organizationId,
+            buildingId: building._id,
+            towerId: targetTower._id,
+            tower: targetTower.name,
+            number: sourceUnit.number,
+            floor: sourceUnit.floor,
+            type: sourceUnit.type,
+            areaSqm: sourceUnit.areaSqm,
+            adminStatus: 'current',
+          });
+          created += 1;
+        } catch (err) {
+          errors.push({
+            tower: targetTower.name,
+            number: sourceUnit.number,
+            error: err.message,
+          });
+        }
+      }
+    }
+
+    res.status(201).json({
+      created,
+      skipped,
+      sourceTower: sourceTower.name,
+      targetTowers: targetTowers.map((t) => t.name),
+      sourceUnits: sourceUnits.length,
+      errors,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.patch('/units/:id', async (req, res) => {
   try {
     const allowed = ['number', 'towerId', 'tower', 'floor', 'type', 'areaSqm', 'adminStatus', 'isActive'];
