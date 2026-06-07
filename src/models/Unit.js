@@ -34,6 +34,7 @@ const unitSchema = new mongoose.Schema(
       default: 'current',
     },
     areaSqm: { type: Number },
+    administrationFee: { type: Number, min: 0 },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

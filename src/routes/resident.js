@@ -1,7 +1,7 @@
 const express = require('express');
 const { Resident, Unit, Facility, Payment, Organization } = require('../models');
 const { authenticate, requireRoles } = require('../middleware/auth');
-const { getBillingSettings, enrichPayment } = require('../utils/billing');
+const { getBillingSettings, enrichPayment, getUnitAdministrationFee } = require('../utils/billing');
 const { getActiveSuspensions, getSuspendedFacilityIds } = require('../utils/suspensions');
 
 const router = express.Router();
@@ -11,7 +11,7 @@ router.use(authenticate, requireRoles('RESIDENT'));
 async function getResidentContext(user) {
   const resident = await Resident.findOne({ userId: user._id }).populate(
     'unitId',
-    'number type tower adminStatus buildingId'
+    'number type tower adminStatus buildingId administrationFee'
   );
   if (!resident) throw new Error('Perfil de residente no encontrado');
   return resident;
@@ -32,6 +32,7 @@ router.get('/billing', async (req, res) => {
     res.json({
       unit: resident.unitId,
       billingSettings,
+      monthlyAdministrationFee: getUnitAdministrationFee(resident.unitId, billingSettings),
       summary: {
         totalDue,
         totalInterest,

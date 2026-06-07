@@ -27,6 +27,7 @@ const organizationSchema = new mongoose.Schema(
           durationDays: { type: Number, default: 30, min: 1 },
           autoLiftWhenPaid: { type: Boolean, default: true },
         },
+        defaultAdministrationFee: { type: Number, min: 0 },
       },
     },
   },

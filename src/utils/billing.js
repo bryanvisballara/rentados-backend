@@ -6,10 +6,18 @@ function daysBetween(start, end) {
   return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
 }
 
+function parseAdministrationFee(value) {
+  if (value === '' || value == null) return undefined;
+  const parsed = Number(String(value).replace(/\s/g, ''));
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return Math.round(parsed);
+}
+
 function getBillingSettings(org) {
   const billing = org?.settings?.billing || {};
   const autoSuspension = billing.autoSuspension || {};
   return {
+    defaultAdministrationFee: billing.defaultAdministrationFee ?? null,
     monthlyInterestRatePercent: billing.monthlyInterestRatePercent ?? 1.5,
     gracePeriodDays: billing.gracePeriodDays ?? 5,
     maxInterestMonths: billing.maxInterestMonths ?? 12,
@@ -21,6 +29,13 @@ function getBillingSettings(org) {
       autoLiftWhenPaid: autoSuspension.autoLiftWhenPaid ?? true,
     },
   };
+}
+
+function getUnitAdministrationFee(unit, billingSettings) {
+  if (unit?.administrationFee != null && unit.administrationFee >= 0) {
+    return unit.administrationFee;
+  }
+  return billingSettings?.defaultAdministrationFee ?? null;
 }
 
 function calculatePaymentTotals(payment, billingSettings, asOf = new Date()) {
@@ -77,6 +92,8 @@ function enrichPayment(payment, billingSettings, asOf = new Date()) {
 
 module.exports = {
   getBillingSettings,
+  getUnitAdministrationFee,
+  parseAdministrationFee,
   calculatePaymentTotals,
   enrichPayment,
 };

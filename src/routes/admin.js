@@ -14,7 +14,7 @@ const {
   ServiceSuspension,
 } = require('../models');
 const { authenticate, requireAdmin, getOrganizationFilter } = require('../middleware/auth');
-const { getBillingSettings, enrichPayment } = require('../utils/billing');
+const { getBillingSettings, enrichPayment, parseAdministrationFee } = require('../utils/billing');
 const { syncAutoSuspensions } = require('../utils/autoSuspension');
 const { getOrgContext, getScopedOrgFilter } = require('../utils/tenantContext');
 const { parseUnitFloor, inferFloorFromUnitNumber } = require('../utils/unitFloor');
@@ -201,7 +201,7 @@ router.get('/units', async (req, res) => {
 
 router.post('/units', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user, req);
+    const { building, organization } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
     let towerName = req.body.tower;
@@ -209,6 +209,11 @@ router.post('/units', async (req, res) => {
       const tower = await Tower.findById(req.body.towerId);
       towerName = tower?.name;
     }
+
+    const administrationFee =
+      parseAdministrationFee(req.body.administrationFee) ??
+      getBillingSettings(organization).defaultAdministrationFee ??
+      undefined;
 
     const unit = await Unit.create({
       organizationId: building.organizationId,
@@ -219,6 +224,7 @@ router.post('/units', async (req, res) => {
       floor: req.body.floor,
       type: req.body.type || 'apartment',
       areaSqm: req.body.areaSqm,
+      administrationFee,
       adminStatus: req.body.adminStatus || 'current',
     });
 
@@ -230,8 +236,10 @@ router.post('/units', async (req, res) => {
 
 router.post('/units/bulk', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user, req);
+    const { building, organization } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
+
+    const defaultFee = getBillingSettings(organization).defaultAdministrationFee;
 
     const { towerId, units: items } = req.body;
     if (!Array.isArray(items) || !items.length) {
@@ -262,6 +270,8 @@ router.post('/units/bulk', async (req, res) => {
           floor: parseUnitFloor(item.floor),
           type: item.type || 'apartment',
           areaSqm: item.areaSqm,
+          administrationFee:
+            parseAdministrationFee(item.administrationFee) ?? defaultFee ?? undefined,
           adminStatus: item.adminStatus || 'current',
         });
         created.push(unit);
@@ -377,6 +387,7 @@ router.post('/units/replicate-tower', async (req, res) => {
           floor: sourceUnit.floor,
           type: sourceUnit.type,
           areaSqm: sourceUnit.areaSqm,
+          administrationFee: sourceUnit.administrationFee,
           adminStatus: 'current',
         });
       }
@@ -446,12 +457,57 @@ router.post('/units/sync-floors', async (req, res) => {
   }
 });
 
+router.post('/units/apply-default-fee', async (req, res) => {
+  try {
+    const { building, organization } = await getOrgContext(req.user, req);
+    if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
+
+    const defaultFee = getBillingSettings(organization).defaultAdministrationFee;
+    if (defaultFee == null) {
+      return res.status(400).json({ error: 'Configura primero el valor de administración por defecto' });
+    }
+
+    const { towerId, overwrite = false } = req.body;
+    const filter = { buildingId: building._id };
+    if (towerId) filter.towerId = towerId;
+    if (!overwrite) {
+      filter.$or = [{ administrationFee: null }, { administrationFee: { $exists: false } }];
+    }
+
+    const result = await Unit.updateMany(filter, { $set: { administrationFee: defaultFee } });
+
+    res.json({
+      updated: result.modifiedCount,
+      defaultAdministrationFee: defaultFee,
+      towerId: towerId || null,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.patch('/units/:id', async (req, res) => {
   try {
-    const allowed = ['number', 'towerId', 'tower', 'floor', 'type', 'areaSqm', 'adminStatus', 'isActive'];
+    const allowed = [
+      'number',
+      'towerId',
+      'tower',
+      'floor',
+      'type',
+      'areaSqm',
+      'administrationFee',
+      'adminStatus',
+      'isActive',
+    ];
     const updates = Object.fromEntries(
       Object.entries(req.body).filter(([key]) => allowed.includes(key))
     );
+    if (updates.administrationFee !== undefined) {
+      updates.administrationFee =
+        updates.administrationFee === null || updates.administrationFee === ''
+          ? null
+          : parseAdministrationFee(updates.administrationFee);
+    }
     const unit = await Unit.findByIdAndUpdate(req.params.id, updates, { new: true }).populate(
       'towerId',
       'name code'

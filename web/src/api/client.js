@@ -85,6 +85,7 @@ export const adminApi = {
     bulkCreate: (body) => api('/admin/units/bulk', { method: 'POST', body }),
     replicateTower: (body) => api('/admin/units/replicate-tower', { method: 'POST', body }),
     syncFloors: (body) => api('/admin/units/sync-floors', { method: 'POST', body }),
+    applyDefaultFee: (body) => api('/admin/units/apply-default-fee', { method: 'POST', body }),
     update: (id, body) => api(`/admin/units/${id}`, { method: 'PATCH', body }),
     remove: (id) => api(`/admin/units/${id}`, { method: 'DELETE' }),
     residents: (unitId) => api(`/admin/units/${unitId}/residents`),

@@ -72,6 +72,7 @@ export default function MorosidadPage() {
   const selectAllRef = useRef(null);
   const selectAllFacilitiesRef = useRef(null);
   const [billing, setBilling] = useState({
+    defaultAdministrationFee: '',
     monthlyInterestRatePercent: 1.5,
     gracePeriodDays: 5,
     maxInterestMonths: 12,
@@ -115,7 +116,10 @@ export default function MorosidadPage() {
       adminApi.cartera(),
     ]);
 
-    setBilling(normalizeBilling(settings.billing));
+    setBilling(normalizeBilling({
+      ...settings.billing,
+      defaultAdministrationFee: settings.billing.defaultAdministrationFee ?? '',
+    }));
     setOverdueRows(buildOverdueRows(unitsData.units, cartera.payments));
     setFacilities(facilitiesData.facilities);
     setSuspensions(suspensionsData.suspensions);
@@ -136,6 +140,28 @@ export default function MorosidadPage() {
       selectAllFacilitiesRef.current.indeterminate = someAutoFacilitiesSelected;
     }
   }, [someAutoFacilitiesSelected]);
+
+  async function saveAdminFee(e) {
+    e.preventDefault();
+    try {
+      const data = await adminApi.billing.updateSettings({
+        defaultAdministrationFee:
+          billing.defaultAdministrationFee === '' ||
+          billing.defaultAdministrationFee == null
+            ? null
+            : Number(billing.defaultAdministrationFee),
+      });
+      setBilling((prev) => ({
+        ...data.billing,
+        autoSuspension: prev.autoSuspension,
+        defaultAdministrationFee: data.billing.defaultAdministrationFee ?? '',
+      }));
+      setSaved('Valor de administración guardado');
+      setTimeout(() => setSaved(''), 3000);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
   async function saveBilling(e) {
     e.preventDefault();
@@ -329,6 +355,32 @@ export default function MorosidadPage() {
       )}
 
       <div className="admin-card">
+        <h2>Valor de administración</h2>
+        <p className="admin-empty" style={{ marginTop: 0 }}>
+          Cuota mensual base del conjunto. Las unidades nuevas la heredan automáticamente; puedes
+          personalizarla por apartamento en Torres y unidades.
+        </p>
+        <form className="admin-form" onSubmit={saveAdminFee}>
+          <label>
+            Cuota mensual por defecto (COP)
+            <input
+              type="number"
+              min="0"
+              step="1000"
+              value={billing.defaultAdministrationFee ?? ''}
+              onChange={(e) =>
+                setBilling({ ...billing, defaultAdministrationFee: e.target.value })
+              }
+              placeholder="Ej: 420000"
+            />
+          </label>
+          <button type="submit" className="admin-btn">
+            Guardar valor
+          </button>
+        </form>
+      </div>
+
+      <div className="admin-card">
         <h2>Intereses por morosidad</h2>
         <form className="admin-form" onSubmit={saveBilling}>
           <label>
@@ -376,8 +428,9 @@ export default function MorosidadPage() {
           </button>
         </form>
         <p className="admin-empty" style={{ marginTop: '0.75rem' }}>
-          Ejemplo: administración de {formatCop(420000)} con 1 mes de mora al 1.5% → interés ≈{' '}
-          {formatCop(Math.round(420000 * 0.015))}
+          Ejemplo: administración de{' '}
+          {formatCop(billing.defaultAdministrationFee || 420000)} con 1 mes de mora al 1.5% → interés ≈{' '}
+          {formatCop(Math.round((billing.defaultAdministrationFee || 420000) * 0.015))}
         </p>
       </div>
 

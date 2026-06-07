@@ -79,6 +79,7 @@ async function runSeed() {
         monthlyInterestRatePercent: 1.5,
         gracePeriodDays: 5,
         maxInterestMonths: 12,
+        defaultAdministrationFee: 420000,
         autoSuggestSuspensionOnOverdue: true,
         autoSuspension: {
           enabled: false,
@@ -142,6 +143,7 @@ async function runSeed() {
       tower: 'Torre B',
       floor: 4,
       type: 'apartment',
+      administrationFee: 420000,
       adminStatus: 'current',
     },
     {
@@ -152,6 +154,7 @@ async function runSeed() {
       tower: 'Torre A',
       floor: 7,
       type: 'apartment',
+      administrationFee: 420000,
       adminStatus: 'current',
     },
     {
@@ -162,6 +165,7 @@ async function runSeed() {
       tower: 'Torre C',
       floor: 12,
       type: 'apartment',
+      administrationFee: 510000,
       adminStatus: 'overdue',
     },
     {
@@ -169,6 +173,7 @@ async function runSeed() {
       buildingId: building._id,
       number: 'Casa 12',
       type: 'house',
+      administrationFee: 680000,
       adminStatus: 'pending',
     },
   ]);

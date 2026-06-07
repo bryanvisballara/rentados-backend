@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { adminApi } from '../../api/client';
+import { adminApi, formatCop } from '../../api/client';
 import '../admin.css';
 
 const emptyTower = { name: '', code: '', floors: '' };
-const emptyUnit = { number: '', type: 'apartment', towerId: '', floor: '', adminStatus: 'current' };
+const emptyUnit = { number: '', type: 'apartment', towerId: '', floor: '', administrationFee: '', adminStatus: 'current' };
 
 function createBulkRow(overrides = {}) {
   return {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     number: '',
     floor: '',
+    administrationFee: '',
     type: 'apartment',
     adminStatus: 'current',
     existing: false,
@@ -35,6 +36,7 @@ function unitToBulkRow(unit) {
     existing: true,
     number: unit.number,
     floor: unit.floor ?? '',
+    administrationFee: unit.administrationFee ?? '',
     type: unit.type,
     adminStatus: unit.adminStatus,
   });
@@ -47,6 +49,13 @@ function parseBulkFloor(value) {
     return { ok: false, value: undefined };
   }
   return { ok: true, value: Math.trunc(parsed) };
+}
+
+function parseBulkAdminFee(value) {
+  if (value === '' || value == null) return { ok: true, value: undefined };
+  const parsed = Number(String(value).replace(/\s/g, ''));
+  if (!Number.isFinite(parsed) || parsed < 0) return { ok: false, value: undefined };
+  return { ok: true, value: Math.round(parsed) };
 }
 
 function buildBulkRows(towerId, allUnits) {
@@ -69,6 +78,7 @@ export default function TowersPage() {
   const [bulkRows, setBulkRows] = useState([]);
   const [savingBulk, setSavingBulk] = useState(false);
   const [syncingFloors, setSyncingFloors] = useState(false);
+  const [applyingDefaultFee, setApplyingDefaultFee] = useState(false);
   const [replicateSourceId, setReplicateSourceId] = useState('');
   const [replicateTargetIds, setReplicateTargetIds] = useState([]);
   const [replicateModal, setReplicateModal] = useState(null);
@@ -118,6 +128,10 @@ export default function TowersPage() {
         ...unitForm,
         towerId: unitForm.towerId || null,
         floor: unitForm.floor ? Number(unitForm.floor) : undefined,
+        administrationFee:
+          unitForm.administrationFee === ''
+            ? null
+            : parseBulkAdminFee(unitForm.administrationFee).value,
       };
       await adminApi.units.update(editingUnitId, body);
       setEditingUnitId(null);
@@ -157,21 +171,27 @@ export default function TowersPage() {
 
     const payload = [];
     for (const row of newItems) {
-      const parsed = parseBulkFloor(row.floor);
-      if (!parsed.ok) {
+      const parsedFloor = parseBulkFloor(row.floor);
+      if (!parsedFloor.ok) {
         setError(`Piso inválido en la unidad ${row.number || 'sin número'}`);
         return;
       }
-      payload.push({ row, floor: parsed.value });
+      const parsedFee = parseBulkAdminFee(row.administrationFee);
+      if (!parsedFee.ok) {
+        setError(`Valor de administración inválido en la unidad ${row.number || 'sin número'}`);
+        return;
+      }
+      payload.push({ row, floor: parsedFloor.value, administrationFee: parsedFee.value });
     }
 
     setSavingBulk(true);
     try {
       const data = await adminApi.units.bulkCreate({
         towerId: bulkTowerId || null,
-        units: payload.map(({ row, floor }) => ({
+        units: payload.map(({ row, floor, administrationFee }) => ({
           number: row.number.trim(),
           floor,
+          administrationFee,
           type: row.type,
           adminStatus: row.adminStatus,
         })),
@@ -217,6 +237,35 @@ export default function TowersPage() {
     }
   }
 
+  async function applyDefaultFeeToTower(overwrite = false) {
+    if (!bulkTowerId) {
+      setError('Selecciona una torre para aplicar el valor de administración');
+      return;
+    }
+
+    if (overwrite && !window.confirm('¿Reemplazar el valor de administración en todas las unidades de esta torre?')) {
+      return;
+    }
+
+    setError('');
+    setSuccess('');
+    setApplyingDefaultFee(true);
+
+    try {
+      const data = await adminApi.units.applyDefaultFee({ towerId: bulkTowerId, overwrite });
+      setSuccess(
+        data.updated
+          ? `${data.updated} unidad(es) actualizada(s) con ${formatCop(data.defaultAdministrationFee)}.`
+          : 'Todas las unidades de esta torre ya tienen valor asignado.'
+      );
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setApplyingDefaultFee(false);
+    }
+  }
+
   function startEditTower(tower) {
     setEditingTowerId(tower._id);
     setTowerForm({
@@ -233,6 +282,7 @@ export default function TowersPage() {
       type: unit.type,
       towerId: unit.towerId?._id || unit.towerId || '',
       floor: unit.floor ?? '',
+      administrationFee: unit.administrationFee ?? '',
       adminStatus: unit.adminStatus,
     });
     if (unit.towerId?._id || unit.towerId) {
@@ -462,6 +512,7 @@ export default function TowersPage() {
                     <tr>
                       <th>Número</th>
                       <th>Piso</th>
+                      <th>Administración</th>
                       <th>Tipo</th>
                       <th>Estado admin</th>
                       <th>Situación</th>
@@ -471,7 +522,7 @@ export default function TowersPage() {
                   <tbody>
                     {bulkRows.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="admin-empty">
+                        <td colSpan={7} className="admin-empty">
                           {bulkTowerId || !towers.length
                             ? 'No hay unidades registradas en esta torre. Usa las filas nuevas abajo.'
                             : 'Selecciona una torre para ver sus unidades.'}
@@ -500,6 +551,25 @@ export default function TowersPage() {
                                 value={row.floor}
                                 onChange={(e) => updateBulkRow(row.key, 'floor', e.target.value)}
                                 placeholder="—"
+                              />
+                            )}
+                          </td>
+                          <td>
+                            {row.existing ? (
+                              row.administrationFee !== '' && row.administrationFee != null
+                                ? formatCop(row.administrationFee)
+                                : '—'
+                            ) : (
+                              <input
+                                className="admin-table-input admin-table-input--sm"
+                                type="number"
+                                min="0"
+                                step="1000"
+                                value={row.administrationFee}
+                                onChange={(e) =>
+                                  updateBulkRow(row.key, 'administrationFee', e.target.value)
+                                }
+                                placeholder="Por defecto"
                               />
                             )}
                           </td>
@@ -583,6 +653,26 @@ export default function TowersPage() {
                     {syncingFloors ? 'Completando…' : 'Completar pisos vacíos desde número'}
                   </button>
                 )}
+                {bulkTowerId && (
+                  <>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost"
+                      onClick={() => applyDefaultFeeToTower(false)}
+                      disabled={applyingDefaultFee}
+                    >
+                      {applyingDefaultFee ? 'Aplicando…' : 'Aplicar valor por defecto'}
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost"
+                      onClick={() => applyDefaultFeeToTower(true)}
+                      disabled={applyingDefaultFee}
+                    >
+                      Reemplazar valores en torre
+                    </button>
+                  </>
+                )}
                 <button
                   type="submit"
                   className="admin-btn"
@@ -636,6 +726,17 @@ export default function TowersPage() {
                 type="number"
                 value={unitForm.floor}
                 onChange={(e) => setUnitForm({ ...unitForm, floor: e.target.value })}
+              />
+            </label>
+            <label>
+              Administración (COP)
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                value={unitForm.administrationFee}
+                onChange={(e) => setUnitForm({ ...unitForm, administrationFee: e.target.value })}
+                placeholder="Vacío = valor por defecto del conjunto"
               />
             </label>
             <label>

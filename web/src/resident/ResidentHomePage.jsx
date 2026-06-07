@@ -83,6 +83,14 @@ export default function ResidentHomePage() {
               <strong>{formatCop(billing.summary.totalInterest)}</strong>
             </div>
             <div>
+              <p>Administración mensual</p>
+              <strong>
+                {billing.monthlyAdministrationFee != null
+                  ? formatCop(billing.monthlyAdministrationFee)
+                  : '—'}
+              </strong>
+            </div>
+            <div>
               <p>Tasa mensual</p>
               <strong>{billing.billingSettings.monthlyInterestRatePercent}%</strong>
             </div>
