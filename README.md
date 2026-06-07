@@ -1,38 +1,61 @@
-# Rentados Backend
+# Rentados
 
-API REST para la plataforma **Rentados** — gestión de conjuntos residenciales, residentes, administraciones y prestadores de servicios.
-
-## Documentación
-
-Ver [BLUEPRINT.md](./BLUEPRINT.md) para arquitectura completa, modelos de datos y roadmap.
+Plataforma para administración de conjuntos residenciales — API, panel admin y portal de residentes.
 
 ## Requisitos
 
 - Node.js 20+
 - MongoDB Atlas (database: `rentados`)
 
-## Setup local
+## Desarrollo local
 
 ```bash
 cp .env.example .env
-# Editar .env con tu MONGO_URI
-
 npm install
-npm run seed    # crea colecciones y datos iniciales
-npm run dev     # servidor con hot reload
+npm --prefix web install
+npm run db:sync
+npm run dev:all
 ```
 
-## Endpoints
+- Frontend local: http://localhost:5174
+- API local: http://localhost:3000
 
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| GET | `/api/v1` | Info de la API |
-| GET | `/api/v1/collections` | Resumen de colecciones (conteos) |
+## Producción (Render + MongoDB Atlas)
 
-## Deploy
+**URL:** https://rentados-backend.onrender.com  
+**Repo:** https://github.com/bryanvisballara/rentados-backend
 
-- **Producción:** https://rentados-backend.onrender.com
-- **Repo:** https://github.com/bryanvisballara/rentados-backend
+### Variables en Render
 
-Configurar en Render: `MONGO_URI`, `JWT_SECRET`, `CORS_ORIGIN`.
+| Variable | Descripción |
+|----------|-------------|
+| `MONGO_URI` | Connection string Atlas → database `rentados` |
+| `JWT_SECRET` | Secreto para tokens |
+| `CORS_ORIGIN` | `https://rentados-backend.onrender.com` |
+| `RUN_DB_SYNC` | `true` → sincroniza MongoDB en cada deploy (build) |
+| `DEPLOY_KEY` | Secreto para `POST /api/v1/deploy/sync-db` |
+
+### Deploy
+
+Cada push a `main` despliega en Render. Si `RUN_DB_SYNC=true`, el build ejecuta `npm run db:sync` contra Atlas.
+
+Sync manual remoto:
+
+```bash
+curl -X POST https://rentados-backend.onrender.com/api/v1/deploy/sync-db \
+  -H "x-deploy-key: TU_DEPLOY_KEY"
+```
+
+Sync manual local (misma base Atlas):
+
+```bash
+npm run db:sync
+```
+
+## Login admin demo
+
+- URL: `/admin/login`
+- Email: `admin@paraisocaribe.com`
+- Password: `Rentados2026!`
+
+Ver [BLUEPRINT.md](./BLUEPRINT.md) para arquitectura completa.

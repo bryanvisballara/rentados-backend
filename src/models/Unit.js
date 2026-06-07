@@ -14,6 +14,12 @@ const unitSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    towerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tower',
+      index: true,
+      default: null,
+    },
     number: { type: String, required: true, trim: true },
     tower: { type: String, trim: true },
     floor: { type: Number },
@@ -33,6 +39,6 @@ const unitSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-unitSchema.index({ buildingId: 1, number: 1 }, { unique: true });
+unitSchema.index({ buildingId: 1, number: 1, towerId: 1 }, { unique: true });
 
 module.exports = mongoose.model('Unit', unitSchema);

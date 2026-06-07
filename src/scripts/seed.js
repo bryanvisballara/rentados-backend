@@ -6,6 +6,7 @@ const {
   User,
   Organization,
   Building,
+  Tower,
   Unit,
   Resident,
   ServiceCategory,
@@ -13,6 +14,9 @@ const {
   Service,
   Facility,
   Announcement,
+  Publication,
+  Payment,
+  VisitorParking,
   QuickAction,
   EmergencyContact,
 } = require('../models');
@@ -28,7 +32,7 @@ const SERVICE_CATEGORIES = [
   { name: 'Mudanzas', slug: 'mudanzas', description: 'Autorización y apoyo en mudanza', icon: 'truck', sortOrder: 8 },
 ];
 
-async function seed() {
+async function runSeed() {
   await connectDB();
 
   console.log('Limpiando colecciones existentes…');
@@ -36,6 +40,7 @@ async function seed() {
     User.deleteMany({}),
     Organization.deleteMany({}),
     Building.deleteMany({}),
+    Tower.deleteMany({}),
     Unit.deleteMany({}),
     Resident.deleteMany({}),
     ServiceCategory.deleteMany({}),
@@ -43,6 +48,9 @@ async function seed() {
     Service.deleteMany({}),
     Facility.deleteMany({}),
     Announcement.deleteMany({}),
+    Publication.deleteMany({}),
+    Payment.deleteMany({}),
+    VisitorParking.deleteMany({}),
     QuickAction.deleteMany({}),
     EmergencyContact.deleteMany({}),
   ]);
@@ -58,43 +66,95 @@ async function seed() {
   });
 
   const org = await Organization.create({
-    name: 'Administración Torres del Parque',
-    slug: 'torres-del-parque',
+    name: 'Administración Paraíso Caribe',
+    slug: 'paraiso-caribe',
     nit: '900123456-1',
-    email: 'contacto@torresdelparque.co',
+    email: 'contacto@paraisocaribe.com',
     phone: '+57 300 123 4567',
     plan: 'pro',
   });
 
   const building = await Building.create({
     organizationId: org._id,
-    name: 'Conjunto Torres del Parque',
-    slug: 'torres-del-parque',
+    name: 'Conjunto Paraíso Caribe',
+    slug: 'paraiso-caribe',
     address: {
-      street: 'Carrera 15 # 80-45',
-      city: 'Bogotá',
-      state: 'Cundinamarca',
+      street: 'Conjunto Paraíso Caribe',
+      city: 'Cartagena',
+      state: 'Bolívar',
       country: 'Colombia',
     },
-    heroImageUrl: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1200',
-    description: 'Conjunto residencial con vista panorámica',
+    heroImageUrl: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1200',
+    description: 'Conjunto residencial frente al mar',
     towers: ['Torre A', 'Torre B', 'Torre C'],
   });
 
   const orgAdmin = await User.create({
-    email: 'admin@torresdelparque.co',
+    email: 'admin@paraisocaribe.com',
     passwordHash,
-    firstName: 'María',
-    lastName: 'González',
+    firstName: 'Bryan',
+    lastName: 'Visbal',
     phone: '+57 310 987 6543',
     role: 'ORG_ADMIN',
     organizationId: org._id,
   });
 
+  const towers = await Tower.insertMany([
+    { organizationId: org._id, buildingId: building._id, name: 'Torre A', code: 'A', floors: 15, sortOrder: 1 },
+    { organizationId: org._id, buildingId: building._id, name: 'Torre B', code: 'B', floors: 12, sortOrder: 2 },
+    { organizationId: org._id, buildingId: building._id, name: 'Torre C', code: 'C', floors: 18, sortOrder: 3 },
+  ]);
+
+  const porteriaUser = await User.create({
+    email: 'porteria@paraisocaribe.com',
+    passwordHash,
+    firstName: 'Luis',
+    lastName: 'Vargas',
+    phone: '+57 311 222 3344',
+    role: 'ORG_STAFF',
+    staffType: 'porteria',
+    organizationId: org._id,
+    buildingId: building._id,
+  });
+
   const units = await Unit.insertMany([
-    { organizationId: org._id, buildingId: building._id, number: '402', tower: 'Torre B', floor: 4, adminStatus: 'current' },
-    { organizationId: org._id, buildingId: building._id, number: '701', tower: 'Torre A', floor: 7, adminStatus: 'current' },
-    { organizationId: org._id, buildingId: building._id, number: '1203', tower: 'Torre C', floor: 12, adminStatus: 'pending' },
+    {
+      organizationId: org._id,
+      buildingId: building._id,
+      towerId: towers[1]._id,
+      number: '402',
+      tower: 'Torre B',
+      floor: 4,
+      type: 'apartment',
+      adminStatus: 'current',
+    },
+    {
+      organizationId: org._id,
+      buildingId: building._id,
+      towerId: towers[0]._id,
+      number: '701',
+      tower: 'Torre A',
+      floor: 7,
+      type: 'apartment',
+      adminStatus: 'current',
+    },
+    {
+      organizationId: org._id,
+      buildingId: building._id,
+      towerId: towers[2]._id,
+      number: '1203',
+      tower: 'Torre C',
+      floor: 12,
+      type: 'apartment',
+      adminStatus: 'overdue',
+    },
+    {
+      organizationId: org._id,
+      buildingId: building._id,
+      number: 'Casa 12',
+      type: 'house',
+      adminStatus: 'pending',
+    },
   ]);
 
   const residentUser = await User.create({
@@ -114,6 +174,71 @@ async function seed() {
     relationship: 'owner',
     moveInDate: new Date('2024-03-01'),
     isPrimary: true,
+  });
+
+  await Payment.insertMany([
+    {
+      organizationId: org._id,
+      unitId: units[0]._id,
+      concept: 'administration',
+      period: '2026-05',
+      amount: 420000,
+      paidAmount: 420000,
+      dueDate: new Date('2026-05-05'),
+      paidAt: new Date('2026-05-03'),
+      status: 'paid',
+    },
+    {
+      organizationId: org._id,
+      unitId: units[0]._id,
+      concept: 'administration',
+      period: '2026-06',
+      amount: 420000,
+      paidAmount: 420000,
+      dueDate: new Date('2026-06-05'),
+      paidAt: new Date('2026-06-02'),
+      status: 'paid',
+    },
+    {
+      organizationId: org._id,
+      unitId: units[2]._id,
+      concept: 'administration',
+      period: '2026-06',
+      amount: 510000,
+      paidAmount: 0,
+      dueDate: new Date('2026-06-05'),
+      status: 'overdue',
+    },
+    {
+      organizationId: org._id,
+      unitId: units[3]._id,
+      concept: 'administration',
+      period: '2026-06',
+      amount: 680000,
+      paidAmount: 0,
+      dueDate: new Date('2026-06-10'),
+      status: 'pending',
+    },
+  ]);
+
+  await VisitorParking.insertMany([
+    { organizationId: org._id, buildingId: building._id, spotNumber: 'V-01', zone: 'Entrada principal', label: 'Visitante 1' },
+    { organizationId: org._id, buildingId: building._id, spotNumber: 'V-02', zone: 'Entrada principal', label: 'Visitante 2', isOccupied: true },
+    { organizationId: org._id, buildingId: building._id, spotNumber: 'V-03', zone: 'Sótano', label: 'Visitante 3' },
+  ]);
+
+  await Publication.create({
+    organizationId: org._id,
+    buildingId: building._id,
+    title: 'Bienvenida junio',
+    body: 'Recordatorio de horarios de zonas comunes.',
+    media: [
+      {
+        type: 'image',
+        url: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800',
+      },
+    ],
+    createdBy: orgAdmin._id,
   });
 
   const categories = await ServiceCategory.insertMany(SERVICE_CATEGORIES);
@@ -192,6 +317,9 @@ async function seed() {
       icon: 'dumbbell',
       capacity: 15,
       requiresApproval: false,
+      seasonOpenDate: new Date('2026-01-01'),
+      seasonCloseDate: new Date('2026-12-31'),
+      status: 'open',
     },
     {
       organizationId: org._id,
@@ -202,6 +330,22 @@ async function seed() {
       icon: 'users',
       capacity: 40,
       requiresApproval: true,
+      seasonOpenDate: new Date('2026-01-01'),
+      seasonCloseDate: new Date('2026-12-31'),
+      status: 'open',
+    },
+    {
+      organizationId: org._id,
+      buildingId: building._id,
+      name: 'Piscina',
+      slug: 'piscina',
+      description: 'Piscina climatizada',
+      icon: 'waves',
+      capacity: 30,
+      requiresApproval: false,
+      seasonOpenDate: new Date('2026-03-01'),
+      seasonCloseDate: new Date('2026-11-30'),
+      status: 'open',
     },
     {
       organizationId: org._id,
@@ -212,6 +356,15 @@ async function seed() {
       icon: 'flame',
       capacity: 20,
       requiresApproval: true,
+      status: 'maintenance',
+      maintenanceClosures: [
+        {
+          startAt: new Date('2026-06-01'),
+          endAt: new Date('2026-06-15'),
+          reason: 'Mantenimiento de gas',
+          isActive: true,
+        },
+      ],
     },
   ]);
 
@@ -254,7 +407,7 @@ async function seed() {
       type: 'wifi',
       label: 'WiFi',
       icon: 'wifi',
-      payload: { ssid: 'TorresDelParque_Guest', password: 'Bienvenido2026' },
+      payload: { ssid: 'ParaisoCaribe_Guest', password: 'Bienvenido2026' },
       sortOrder: 1,
     },
     {
@@ -262,7 +415,7 @@ async function seed() {
       type: 'location',
       label: 'Ubicación',
       icon: 'map-pin',
-      payload: { url: 'https://maps.google.com/?q=Torres+del+Parque+Bogota' },
+      payload: { url: 'https://maps.google.com/?q=Paraiso+Caribe+Cartagena' },
       sortOrder: 2,
     },
     {
@@ -314,17 +467,25 @@ async function seed() {
   console.log('Colecciones creadas:');
   console.log('  organizations, buildings, units, users, residents');
   console.log('  service_categories, service_providers, services');
-  console.log('  facilities, announcements, quick_actions, emergency_contacts');
+  console.log('  facilities, publications, payments, visitor_parking');
+  console.log('  announcements, quick_actions, emergency_contacts');
   console.log('\nUsuarios demo (password: Rentados2026!):');
   console.log(`  Super Admin:  ${superAdmin.email}`);
   console.log(`  Org Admin:    ${orgAdmin.email}`);
+  console.log(`  Portería:     ${porteriaUser.email}`);
   console.log(`  Residente:    ${residentUser.email}`);
   console.log(`  Prestador:    ${providerUser.email}`);
 
-  process.exit(0);
+  return { superAdmin, orgAdmin, porteriaUser, residentUser, providerUser };
 }
 
-seed().catch((err) => {
-  console.error('Error en seed:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  runSeed()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('Error en seed:', err);
+      process.exit(1);
+    });
+}
+
+module.exports = { runSeed };

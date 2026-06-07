@@ -1,13 +1,15 @@
 require('dotenv').config();
 
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const { connectDB } = require('./config/db');
-const apiRoutes = require('./routes/api');
+const apiRoutes = require('./routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isProd = process.env.NODE_ENV === 'production';
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
@@ -35,11 +37,19 @@ app.get('/api/v1', (_req, res) => {
   });
 });
 
-app.use('/api/v1', apiRoutes);
+app.use('/api', apiRoutes);
 
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
+if (isProd) {
+  const webDist = path.join(__dirname, '../web/dist');
+  app.use(express.static(webDist));
+  app.get(/^(?!\/api).*/, (_req, res) => {
+    res.sendFile(path.join(webDist, 'index.html'));
+  });
+} else {
+  app.use((_req, res) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+}
 
 app.use((err, _req, res, _next) => {
   console.error(err);

@@ -1,0 +1,51 @@
+export const LOGIN_PORTALS = {
+  resident: {
+    id: 'resident',
+    title: 'Hola, bienvenido',
+    subtitle: 'Accede y paga tu administración, tus servicios públicos, reservas y novedades de tu conjunto.',
+    heroTagline: 'Tu conjunto, simplificado',
+    submitLabel: 'Iniciar sesión',
+    switchPrompt: '¿Acceso corporativo?',
+    switchLinks: [
+      { label: 'Administración', to: '/admin/login' },
+      { label: 'Prestadores', to: '/provider/login' },
+    ],
+  },
+  admin: {
+    id: 'admin',
+    title: 'Panel de administración',
+    subtitle: 'Gestiona unidades, residentes y servicios de tu conjunto.',
+    heroTagline: 'Administra con claridad',
+    submitLabel: 'Ingresar al panel',
+    switchPrompt: '¿No eres administrador?',
+    switchLinks: [
+      { label: 'Portal de residentes', to: '/login' },
+      { label: 'Portería', to: '/porteria/login' },
+      { label: 'Prestadores', to: '/provider/login' },
+    ],
+  },
+  provider: {
+    id: 'provider',
+    title: 'Portal de prestadores',
+    subtitle: 'Revisa solicitudes y gestiona tu agenda de servicios.',
+    heroTagline: 'Tu trabajo, organizado',
+    submitLabel: 'Ingresar al portal',
+    switchPrompt: '¿Buscas otro acceso?',
+    switchLinks: [
+      { label: 'Portal de residentes', to: '/login' },
+      { label: 'Administración', to: '/admin/login' },
+    ],
+  },
+  porteria: {
+    id: 'porteria',
+    title: 'Portal de portería',
+    subtitle: 'Control de accesos, visitantes y apoyo al conjunto.',
+    heroTagline: 'Siempre atentos',
+    submitLabel: 'Ingresar',
+    switchPrompt: '¿Buscas otro acceso?',
+    switchLinks: [
+      { label: 'Portal de residentes', to: '/login' },
+      { label: 'Administración', to: '/admin/login' },
+    ],
+  },
+};

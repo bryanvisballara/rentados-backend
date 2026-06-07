@@ -1,0 +1,58 @@
+import { Routes, Route, Navigate } from 'react-router-dom';
+import LoginPage from './pages/LoginPage';
+import ProtectedRoute from './components/ProtectedRoute';
+import AdminLayout from './admin/AdminLayout';
+import DashboardPage from './admin/pages/DashboardPage';
+import TowersPage from './admin/pages/TowersPage';
+import FacilitiesPage from './admin/pages/FacilitiesPage';
+import PublicationsPage from './admin/pages/PublicationsPage';
+import PorteriaPage from './admin/pages/PorteriaPage';
+import VisitorParkingPage from './admin/pages/VisitorParkingPage';
+import CarteraPage from './admin/pages/CarteraPage';
+import ResidentAssignPage from './admin/pages/ResidentAssignPage';
+import ResidentsPage from './admin/pages/ResidentsPage';
+import ResidentDetailPage from './admin/pages/ResidentDetailPage';
+import PorteriaLoginPage from './porteria/PorteriaLoginPage';
+import PorteriaHomePage from './porteria/PorteriaHomePage';
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage portal="resident" />} />
+      <Route path="/admin/login" element={<LoginPage portal="admin" />} />
+      <Route path="/provider/login" element={<LoginPage portal="provider" />} />
+      <Route path="/porteria/login" element={<PorteriaLoginPage />} />
+
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute roles={['ORG_ADMIN', 'SUPER_ADMIN']}>
+            <AdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<DashboardPage />} />
+        <Route path="torres" element={<TowersPage />} />
+        <Route path="asignacion" element={<ResidentAssignPage />} />
+        <Route path="servicios" element={<FacilitiesPage />} />
+        <Route path="publicaciones" element={<PublicationsPage />} />
+        <Route path="porteria" element={<PorteriaPage />} />
+        <Route path="parqueaderos" element={<VisitorParkingPage />} />
+        <Route path="cartera" element={<CarteraPage />} />
+        <Route path="residentes" element={<ResidentsPage />} />
+        <Route path="residentes/:id" element={<ResidentDetailPage />} />
+      </Route>
+
+      <Route
+        path="/porteria"
+        element={
+          <ProtectedRoute roles={['ORG_STAFF']} loginPath="/porteria/login">
+            <PorteriaHomePage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route path="/" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+}

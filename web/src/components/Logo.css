@@ -1,0 +1,70 @@
+.logo {
+  display: block;
+  object-fit: contain;
+}
+
+.logo--sm {
+  width: 96px;
+  height: auto;
+}
+
+.logo--md {
+  width: 140px;
+  height: auto;
+}
+
+.logo--lg {
+  width: min(220px, 78vw);
+  height: auto;
+}
+
+.logo-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1.5px dashed var(--color-green-muted);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--color-green);
+}
+
+.logo-placeholder--sm {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+}
+
+.logo-placeholder--sm .logo-placeholder__hint {
+  display: none;
+}
+
+.logo-placeholder--md {
+  width: 88px;
+  height: 88px;
+}
+
+.logo-placeholder--lg {
+  width: 120px;
+  height: 120px;
+}
+
+.logo-placeholder__mark {
+  font-family: var(--font-serif);
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.logo-placeholder--lg .logo-placeholder__mark {
+  font-size: 2.25rem;
+}
+
+.logo-placeholder__hint {
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}

@@ -2,6 +2,7 @@ module.exports = {
   User: require('./User'),
   Organization: require('./Organization'),
   Building: require('./Building'),
+  Tower: require('./Tower'),
   Unit: require('./Unit'),
   Resident: require('./Resident'),
   ServiceCategory: require('./ServiceCategory'),
@@ -11,7 +12,10 @@ module.exports = {
   Facility: require('./Facility'),
   FacilityBooking: require('./FacilityBooking'),
   Announcement: require('./Announcement'),
+  Publication: require('./Publication'),
   Message: require('./Message'),
   QuickAction: require('./QuickAction'),
   EmergencyContact: require('./EmergencyContact'),
+  Payment: require('./Payment'),
+  VisitorParking: require('./VisitorParking'),
 };

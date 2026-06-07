@@ -24,6 +24,22 @@ const facilitySchema = new mongoose.Schema(
       start: { type: String, default: '06:00' },
       end: { type: String, default: '22:00' },
     },
+    seasonOpenDate: { type: Date },
+    seasonCloseDate: { type: Date },
+    status: {
+      type: String,
+      enum: ['open', 'closed', 'maintenance'],
+      default: 'open',
+      index: true,
+    },
+    maintenanceClosures: [
+      {
+        startAt: { type: Date, required: true },
+        endAt: { type: Date, required: true },
+        reason: { type: String, trim: true },
+        isActive: { type: Boolean, default: true },
+      },
+    ],
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

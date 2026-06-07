@@ -3,7 +3,7 @@ services:
     name: rentados-backend
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npm --prefix web install && npm --prefix web run build && node scripts/postbuild.js
     startCommand: npm start
     healthCheckPath: /health
     envVars:
@@ -14,4 +14,8 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGIN
-        value: "*"
+        value: https://rentados-backend.onrender.com
+      - key: RUN_DB_SYNC
+        value: "true"
+      - key: DEPLOY_KEY
+        sync: false
