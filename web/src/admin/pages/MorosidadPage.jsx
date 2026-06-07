@@ -366,7 +366,7 @@ export default function MorosidadPage() {
             <input
               type="number"
               min="0"
-              step="1000"
+              step="1"
               value={billing.defaultAdministrationFee ?? ''}
               onChange={(e) =>
                 setBilling({ ...billing, defaultAdministrationFee: e.target.value })

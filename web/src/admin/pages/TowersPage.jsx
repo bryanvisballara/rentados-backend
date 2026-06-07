@@ -564,7 +564,7 @@ export default function TowersPage() {
                                 className="admin-table-input admin-table-input--sm"
                                 type="number"
                                 min="0"
-                                step="1000"
+                                step="1"
                                 value={row.administrationFee}
                                 onChange={(e) =>
                                   updateBulkRow(row.key, 'administrationFee', e.target.value)
