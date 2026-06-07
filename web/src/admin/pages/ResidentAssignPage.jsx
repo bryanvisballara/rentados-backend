@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { adminApi } from '../../api/client';
 import '../admin.css';
 
@@ -21,14 +21,39 @@ const emptyEdit = {
   relationship: 'owner',
 };
 
+const defaultFilters = {
+  q: '',
+  unitId: '',
+  status: '',
+  type: '',
+  tower: '',
+  relationship: '',
+};
+
+const RELATIONSHIP_LABELS = {
+  owner: 'Propietario',
+  tenant: 'Arrendatario',
+  family: 'Familiar',
+};
+
 export default function ResidentAssignPage() {
   const [units, setUnits] = useState([]);
+  const [residents, setResidents] = useState([]);
+  const [filters, setFilters] = useState(defaultFilters);
   const [error, setError] = useState('');
   const [createForm, setCreateForm] = useState(emptyResident);
-  const [selectedUnitId, setSelectedUnitId] = useState('');
-  const [unitResidents, setUnitResidents] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(emptyEdit);
+
+  const towers = useMemo(
+    () => [...new Set(units.map((u) => u.tower || u.towerId?.name).filter(Boolean))].sort(),
+    [units]
+  );
+
+  async function loadResidents(nextFilters = filters) {
+    const data = await adminApi.residents.list(nextFilters);
+    setResidents(data.residents);
+  }
 
   useEffect(() => {
     adminApi.units
@@ -38,25 +63,15 @@ export default function ResidentAssignPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedUnitId) {
-      setUnitResidents([]);
-      return;
-    }
-    adminApi.units
-      .residents(selectedUnitId)
-      .then((data) => setUnitResidents(data.residents))
-      .catch((err) => setError(err.message));
-  }, [selectedUnitId]);
+    loadResidents(filters).catch((err) => setError(err.message));
+  }, [filters]);
 
   async function createResident(e) {
     e.preventDefault();
     try {
       await adminApi.residents.create(createForm);
       setCreateForm(emptyResident);
-      if (selectedUnitId === createForm.unitId) {
-        const data = await adminApi.units.residents(selectedUnitId);
-        setUnitResidents(data.residents);
-      }
+      await loadResidents();
     } catch (err) {
       setError(err.message);
     }
@@ -65,10 +80,10 @@ export default function ResidentAssignPage() {
   function startEditResident(resident) {
     setEditingId(resident._id);
     setEditForm({
-      firstName: resident.userId.firstName,
-      lastName: resident.userId.lastName,
-      email: resident.userId.email,
-      phone: resident.userId.phone || '',
+      firstName: resident.userId?.firstName || '',
+      lastName: resident.userId?.lastName || '',
+      email: resident.userId?.email || '',
+      phone: resident.userId?.phone || '',
       password: '',
       relationship: resident.relationship,
     });
@@ -82,8 +97,7 @@ export default function ResidentAssignPage() {
       await adminApi.residents.update(editingId, body);
       setEditingId(null);
       setEditForm(emptyEdit);
-      const data = await adminApi.units.residents(selectedUnitId);
-      setUnitResidents(data.residents);
+      await loadResidents();
     } catch (err) {
       setError(err.message);
     }
@@ -97,14 +111,11 @@ export default function ResidentAssignPage() {
         setEditingId(null);
         setEditForm(emptyEdit);
       }
-      const data = await adminApi.units.residents(selectedUnitId);
-      setUnitResidents(data.residents);
+      await loadResidents();
     } catch (err) {
       setError(err.message);
     }
   }
-
-  const selectedUnit = units.find((u) => u._id === selectedUnitId);
 
   return (
     <div className="admin-page">
@@ -185,11 +196,26 @@ export default function ResidentAssignPage() {
 
       <div className="admin-card">
         <h2>Residentes por unidad</h2>
-        <form className="admin-form" onSubmit={(e) => e.preventDefault()}>
+        <p className="admin-empty" style={{ marginTop: 0 }}>
+          Por defecto se muestran todos los residentes. Usa los filtros para acotar la lista.
+        </p>
+
+        <form className="admin-form" style={{ marginTop: '1rem' }} onSubmit={(e) => e.preventDefault()}>
           <label>
-            Seleccionar unidad
-            <select value={selectedUnitId} onChange={(e) => setSelectedUnitId(e.target.value)}>
-              <option value="">Elegir apartamento o casa</option>
+            Buscar
+            <input
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+              placeholder="Nombre, correo o unidad"
+            />
+          </label>
+          <label>
+            Unidad
+            <select
+              value={filters.unitId}
+              onChange={(e) => setFilters({ ...filters, unitId: e.target.value })}
+            >
+              <option value="">Todas</option>
               {units.map((u) => (
                 <option key={u._id} value={u._id}>
                   {u.number} {u.towerId?.name ? `· ${u.towerId.name}` : ''}
@@ -197,13 +223,60 @@ export default function ResidentAssignPage() {
               ))}
             </select>
           </label>
+          <label>
+            Torre
+            <select
+              value={filters.tower}
+              onChange={(e) => setFilters({ ...filters, tower: e.target.value })}
+            >
+              <option value="">Todas</option>
+              {towers.map((tower) => (
+                <option key={tower} value={tower}>
+                  {tower}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Tipo de unidad
+            <select
+              value={filters.type}
+              onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+            >
+              <option value="">Todos</option>
+              <option value="apartment">Apartamento</option>
+              <option value="house">Casa</option>
+            </select>
+          </label>
+          <label>
+            Estado administración
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            >
+              <option value="">Todos</option>
+              <option value="current">Al día</option>
+              <option value="pending">Pendiente</option>
+              <option value="overdue">Moroso</option>
+            </select>
+          </label>
+          <label>
+            Relación
+            <select
+              value={filters.relationship}
+              onChange={(e) => setFilters({ ...filters, relationship: e.target.value })}
+            >
+              <option value="">Todas</option>
+              <option value="owner">Propietario</option>
+              <option value="tenant">Arrendatario</option>
+              <option value="family">Familiar</option>
+            </select>
+          </label>
         </form>
 
-        {selectedUnit && (
-          <p className="admin-empty" style={{ marginTop: '0.75rem' }}>
-            {selectedUnit.number}: {unitResidents.length} usuario(s) asignado(s)
-          </p>
-        )}
+        <p className="admin-empty" style={{ marginTop: '0.75rem' }}>
+          {residents.length} residente(s) encontrado(s)
+        </p>
 
         {editingId && (
           <form className="admin-form" style={{ marginTop: '1rem' }} onSubmit={saveEditResident}>
@@ -239,6 +312,17 @@ export default function ResidentAssignPage() {
                 onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
               />
             </label>
+            <label>
+              Relación
+              <select
+                value={editForm.relationship}
+                onChange={(e) => setEditForm({ ...editForm, relationship: e.target.value })}
+              >
+                <option value="owner">Propietario</option>
+                <option value="tenant">Arrendatario</option>
+                <option value="family">Familiar</option>
+              </select>
+            </label>
             <div className="admin-actions">
               <button type="submit" className="admin-btn">
                 Guardar residente
@@ -257,25 +341,45 @@ export default function ResidentAssignPage() {
           </form>
         )}
 
-        {selectedUnitId && (
-          <div className="admin-table-wrap" style={{ marginTop: '1rem' }}>
-            <table className="admin-table">
-              <thead>
+        <div className="admin-table-wrap" style={{ marginTop: '1rem' }}>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Residente</th>
+                <th>Email</th>
+                <th>Unidad</th>
+                <th>Torre</th>
+                <th>Relación</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {residents.length === 0 ? (
                 <tr>
-                  <th>Residente</th>
-                  <th>Email</th>
-                  <th>Relación</th>
-                  <th>Acciones</th>
+                  <td colSpan={7} className="admin-empty">
+                    No hay residentes con los filtros seleccionados.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {unitResidents.map((r) => (
+              ) : (
+                residents.map((r) => (
                   <tr key={r._id}>
                     <td>
                       {r.userId?.firstName} {r.userId?.lastName}
                     </td>
                     <td>{r.userId?.email}</td>
-                    <td>{r.relationship}</td>
+                    <td>{r.unitId?.number || '—'}</td>
+                    <td>{r.unitId?.tower || '—'}</td>
+                    <td>{RELATIONSHIP_LABELS[r.relationship] || r.relationship}</td>
+                    <td>
+                      {r.unitId?.adminStatus ? (
+                        <span className={`admin-badge admin-badge--${r.unitId.adminStatus}`}>
+                          {r.unitId.adminStatus}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td className="admin-actions">
                       <button
                         type="button"
@@ -293,11 +397,11 @@ export default function ResidentAssignPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

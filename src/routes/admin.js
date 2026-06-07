@@ -797,12 +797,30 @@ router.get('/residents', async (req, res) => {
       result = result.filter((r) => r.unitId?.adminStatus === req.query.status);
     }
 
+    if (req.query.unitId) {
+      result = result.filter((r) => (r.unitId?._id || r.unitId)?.toString() === req.query.unitId);
+    }
+
+    if (req.query.type) {
+      result = result.filter((r) => r.unitId?.type === req.query.type);
+    }
+
+    if (req.query.tower) {
+      const tower = req.query.tower.toLowerCase();
+      result = result.filter((r) => (r.unitId?.tower || '').toLowerCase() === tower);
+    }
+
+    if (req.query.relationship) {
+      result = result.filter((r) => r.relationship === req.query.relationship);
+    }
+
     if (req.query.q) {
       const q = req.query.q.toLowerCase();
       result = result.filter((r) => {
         const name = `${r.userId?.firstName} ${r.userId?.lastName}`.toLowerCase();
+        const email = r.userId?.email?.toLowerCase() || '';
         const unit = r.unitId?.number?.toLowerCase() || '';
-        return name.includes(q) || unit.includes(q);
+        return name.includes(q) || email.includes(q) || unit.includes(q);
       });
     }
 
