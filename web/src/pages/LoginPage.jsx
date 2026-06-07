@@ -7,7 +7,7 @@ import { login as loginApi } from '../api/client';
 import './LoginPage.css';
 
 const REDIRECTS = {
-  resident: '/login',
+  resident: '/app',
   admin: '/admin',
   provider: '/provider',
   porteria: '/porteria',

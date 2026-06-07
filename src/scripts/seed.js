@@ -13,6 +13,7 @@ const {
   ServiceProvider,
   Service,
   Facility,
+  ServiceSuspension,
   Announcement,
   Publication,
   Payment,
@@ -47,6 +48,7 @@ async function runSeed() {
     ServiceProvider.deleteMany({}),
     Service.deleteMany({}),
     Facility.deleteMany({}),
+    ServiceSuspension.deleteMany({}),
     Announcement.deleteMany({}),
     Publication.deleteMany({}),
     Payment.deleteMany({}),
@@ -72,6 +74,14 @@ async function runSeed() {
     email: 'contacto@paraisocaribe.com',
     phone: '+57 300 123 4567',
     plan: 'pro',
+    settings: {
+      billing: {
+        monthlyInterestRatePercent: 1.5,
+        gracePeriodDays: 5,
+        maxInterestMonths: 12,
+        autoSuggestSuspensionOnOverdue: true,
+      },
+    },
   });
 
   const building = await Building.create({
@@ -307,7 +317,7 @@ async function runSeed() {
     },
   ]);
 
-  await Facility.insertMany([
+  const facilities = await Facility.insertMany([
     {
       organizationId: org._id,
       buildingId: building._id,
@@ -316,7 +326,11 @@ async function runSeed() {
       description: 'Gimnasio equipado con horario extendido',
       icon: 'dumbbell',
       capacity: 15,
+      price: 35000,
+      pricingType: 'monthly',
+      blockWhenOverdue: true,
       requiresApproval: false,
+      openHours: { start: '05:30', end: '21:00' },
       seasonOpenDate: new Date('2026-01-01'),
       seasonCloseDate: new Date('2026-12-31'),
       status: 'open',
@@ -329,7 +343,11 @@ async function runSeed() {
       description: 'Salón para eventos de hasta 40 personas',
       icon: 'users',
       capacity: 40,
+      price: 180000,
+      pricingType: 'per_use',
+      blockWhenOverdue: true,
       requiresApproval: true,
+      openHours: { start: '08:00', end: '22:00' },
       seasonOpenDate: new Date('2026-01-01'),
       seasonCloseDate: new Date('2026-12-31'),
       status: 'open',
@@ -342,7 +360,11 @@ async function runSeed() {
       description: 'Piscina climatizada',
       icon: 'waves',
       capacity: 30,
+      price: 0,
+      pricingType: 'free',
+      blockWhenOverdue: true,
       requiresApproval: false,
+      openHours: { start: '07:00', end: '20:00' },
       seasonOpenDate: new Date('2026-03-01'),
       seasonCloseDate: new Date('2026-11-30'),
       status: 'open',
@@ -355,7 +377,11 @@ async function runSeed() {
       description: 'Zona de asados en terraza',
       icon: 'flame',
       capacity: 20,
+      price: 85000,
+      pricingType: 'per_use',
+      blockWhenOverdue: false,
       requiresApproval: true,
+      openHours: { start: '10:00', end: '22:00' },
       status: 'maintenance',
       maintenanceClosures: [
         {
@@ -367,6 +393,36 @@ async function runSeed() {
       ],
     },
   ]);
+
+  const morosoUser = await User.create({
+    email: 'moroso@demo.co',
+    passwordHash,
+    firstName: 'Ana',
+    lastName: 'Torres',
+    phone: '+57 318 777 8899',
+    role: 'RESIDENT',
+    organizationId: org._id,
+  });
+
+  await Resident.create({
+    userId: morosoUser._id,
+    organizationId: org._id,
+    unitId: units[2]._id,
+    relationship: 'owner',
+    moveInDate: new Date('2023-08-01'),
+    isPrimary: true,
+  });
+
+  await ServiceSuspension.create({
+    organizationId: org._id,
+    unitId: units[2]._id,
+    facilityIds: [facilities[0]._id, facilities[2]._id],
+    startAt: new Date('2026-06-01'),
+    endAt: new Date('2026-06-30'),
+    reason: 'morosidad',
+    notes: 'Suspensión gimnasio y piscina por mora junio 2026',
+    createdBy: orgAdmin._id,
+  });
 
   await Announcement.insertMany([
     {
@@ -474,9 +530,10 @@ async function runSeed() {
   console.log(`  Org Admin:    ${orgAdmin.email}`);
   console.log(`  Portería:     ${porteriaUser.email}`);
   console.log(`  Residente:    ${residentUser.email}`);
+  console.log(`  Moroso demo:  ${morosoUser.email}`);
   console.log(`  Prestador:    ${providerUser.email}`);
 
-  return { superAdmin, orgAdmin, porteriaUser, residentUser, providerUser };
+  return { superAdmin, orgAdmin, porteriaUser, residentUser, morosoUser, providerUser };
 }
 
 if (require.main === module) {

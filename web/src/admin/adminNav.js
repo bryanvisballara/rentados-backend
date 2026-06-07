@@ -7,5 +7,6 @@ export const ADMIN_NAV = [
   { to: '/admin/porteria', label: 'Portería' },
   { to: '/admin/parqueaderos', label: 'Parqueaderos' },
   { to: '/admin/cartera', label: 'Cartera' },
+  { to: '/admin/morosidad', label: 'Morosidad' },
   { to: '/admin/residentes', label: 'Base de datos' },
 ];

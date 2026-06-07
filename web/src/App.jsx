@@ -9,6 +9,8 @@ import PublicationsPage from './admin/pages/PublicationsPage';
 import PorteriaPage from './admin/pages/PorteriaPage';
 import VisitorParkingPage from './admin/pages/VisitorParkingPage';
 import CarteraPage from './admin/pages/CarteraPage';
+import MorosidadPage from './admin/pages/MorosidadPage';
+import ResidentHomePage from './resident/ResidentHomePage';
 import ResidentAssignPage from './admin/pages/ResidentAssignPage';
 import ResidentsPage from './admin/pages/ResidentsPage';
 import ResidentDetailPage from './admin/pages/ResidentDetailPage';
@@ -39,6 +41,7 @@ export default function App() {
         <Route path="porteria" element={<PorteriaPage />} />
         <Route path="parqueaderos" element={<VisitorParkingPage />} />
         <Route path="cartera" element={<CarteraPage />} />
+        <Route path="morosidad" element={<MorosidadPage />} />
         <Route path="residentes" element={<ResidentsPage />} />
         <Route path="residentes/:id" element={<ResidentDetailPage />} />
       </Route>
@@ -48,6 +51,15 @@ export default function App() {
         element={
           <ProtectedRoute roles={['ORG_STAFF']} loginPath="/porteria/login">
             <PorteriaHomePage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/app"
+        element={
+          <ProtectedRoute roles={['RESIDENT']} loginPath="/login">
+            <ResidentHomePage />
           </ProtectedRoute>
         }
       />

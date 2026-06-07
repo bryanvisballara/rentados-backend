@@ -28,6 +28,7 @@ const paymentSchema = new mongoose.Schema(
     period: { type: String, required: true, trim: true },
     amount: { type: Number, required: true, min: 0 },
     paidAmount: { type: Number, default: 0, min: 0 },
+    interestAmount: { type: Number, default: 0, min: 0 },
     currency: { type: String, default: 'COP' },
     dueDate: { type: Date, required: true },
     paidAt: { type: Date },

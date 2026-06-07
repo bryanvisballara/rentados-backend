@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
-import { adminApi } from '../../api/client';
+import { adminApi, formatCop } from '../../api/client';
 import '../admin.css';
 
 function statusBadge(status) {
   const map = { open: 'open', maintenance: 'maintenance', closed: 'closed' };
   return map[status] || 'pending';
 }
+
+const PRICING_LABELS = {
+  free: 'Gratis',
+  per_use: 'Por uso',
+  monthly: 'Mensual',
+};
 
 export default function FacilitiesPage() {
   const [facilities, setFacilities] = useState([]);
@@ -18,6 +24,9 @@ export default function FacilitiesPage() {
     seasonCloseDate: '',
     openStart: '06:00',
     openEnd: '22:00',
+    price: '',
+    pricingType: 'free',
+    blockWhenOverdue: true,
   });
 
   async function load() {
@@ -39,6 +48,9 @@ export default function FacilitiesPage() {
         seasonOpenDate: form.seasonOpenDate || undefined,
         seasonCloseDate: form.seasonCloseDate || undefined,
         openHours: { start: form.openStart, end: form.openEnd },
+        price: form.price ? Number(form.price) : 0,
+        pricingType: form.pricingType,
+        blockWhenOverdue: form.blockWhenOverdue,
       });
       setForm({
         name: '',
@@ -48,6 +60,9 @@ export default function FacilitiesPage() {
         seasonCloseDate: '',
         openStart: '06:00',
         openEnd: '22:00',
+        price: '',
+        pricingType: 'free',
+        blockWhenOverdue: true,
       });
       await load();
     } catch (err) {
@@ -85,7 +100,7 @@ export default function FacilitiesPage() {
     <div className="admin-page">
       <header className="admin-page__header">
         <h1>Servicios del conjunto</h1>
-        <p>Gimnasio, salón social, piscina, BBQ y horarios de apertura.</p>
+        <p>Gimnasio, salón social, piscina, BBQ, costos y horarios de apertura.</p>
       </header>
 
       {error && <div className="admin-error">{error}</div>}
@@ -137,6 +152,35 @@ export default function FacilitiesPage() {
               onChange={(e) => setForm({ ...form, openEnd: e.target.value })}
             />
           </label>
+          <label>
+            Costo (COP)
+            <input
+              type="number"
+              min="0"
+              value={form.price}
+              onChange={(e) => setForm({ ...form, price: e.target.value })}
+              placeholder="0 = gratis"
+            />
+          </label>
+          <label>
+            Tipo de cobro
+            <select
+              value={form.pricingType}
+              onChange={(e) => setForm({ ...form, pricingType: e.target.value })}
+            >
+              <option value="free">Gratis</option>
+              <option value="per_use">Por uso</option>
+              <option value="monthly">Mensual</option>
+            </select>
+          </label>
+          <label className="admin-checkbox">
+            <input
+              type="checkbox"
+              checked={form.blockWhenOverdue}
+              onChange={(e) => setForm({ ...form, blockWhenOverdue: e.target.checked })}
+            />
+            <span>Suspender si hay mora</span>
+          </label>
           <label style={{ gridColumn: '1 / -1' }}>
             Descripción
             <textarea
@@ -156,6 +200,7 @@ export default function FacilitiesPage() {
           <thead>
             <tr>
               <th>Servicio</th>
+              <th>Costo</th>
               <th>Horario</th>
               <th>Temporada</th>
               <th>Estado</th>
@@ -166,6 +211,11 @@ export default function FacilitiesPage() {
             {facilities.map((f) => (
               <tr key={f._id}>
                 <td>{f.name}</td>
+                <td>
+                  {f.price > 0
+                    ? `${formatCop(f.price)} · ${PRICING_LABELS[f.pricingType] || f.pricingType}`
+                    : 'Gratis'}
+                </td>
                 <td>
                   {f.openHours?.start} – {f.openHours?.end}
                 </td>

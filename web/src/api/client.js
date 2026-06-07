@@ -95,6 +95,16 @@ export const adminApi = {
     update: (id, body) => api(`/admin/visitor-parking/${id}`, { method: 'PATCH', body }),
     remove: (id) => api(`/admin/visitor-parking/${id}`, { method: 'DELETE' }),
   },
+  billing: {
+    getSettings: () => api('/admin/billing-settings'),
+    updateSettings: (body) => api('/admin/billing-settings', { method: 'PATCH', body }),
+  },
+  suspensions: {
+    list: () => api('/admin/service-suspensions'),
+    create: (body) => api('/admin/service-suspensions', { method: 'POST', body }),
+    update: (id, body) => api(`/admin/service-suspensions/${id}`, { method: 'PATCH', body }),
+    remove: (id) => api(`/admin/service-suspensions/${id}`, { method: 'DELETE' }),
+  },
   cartera: (period) => {
     const q = period ? `?period=${period}` : '';
     return api(`/admin/cartera${q}`);
@@ -109,4 +119,9 @@ export const adminApi = {
     update: (id, body) => api(`/admin/residents/${id}`, { method: 'PATCH', body }),
     remove: (id) => api(`/admin/residents/${id}`, { method: 'DELETE' }),
   },
+};
+
+export const residentApi = {
+  billing: () => api('/resident/billing'),
+  services: () => api('/resident/services'),
 };

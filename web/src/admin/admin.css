@@ -224,3 +224,20 @@
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+
+.admin-checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+}
+
+.admin-checkbox input {
+  width: auto;
+}
+
+.admin-checklist {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}

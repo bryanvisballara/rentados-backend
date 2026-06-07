@@ -11,8 +11,10 @@ const {
   Payment,
   VisitorParking,
   Organization,
+  ServiceSuspension,
 } = require('../models');
 const { authenticate, requireAdmin, getOrganizationFilter } = require('../middleware/auth');
+const { getBillingSettings, enrichPayment } = require('../utils/billing');
 
 const router = express.Router();
 
@@ -307,6 +309,10 @@ router.post('/facilities', async (req, res) => {
       seasonOpenDate: req.body.seasonOpenDate,
       seasonCloseDate: req.body.seasonCloseDate,
       status: req.body.status || 'open',
+      price: req.body.price ?? 0,
+      currency: req.body.currency,
+      pricingType: req.body.pricingType || 'free',
+      blockWhenOverdue: req.body.blockWhenOverdue ?? true,
     });
 
     res.status(201).json({ facility });
@@ -317,7 +323,26 @@ router.post('/facilities', async (req, res) => {
 
 router.patch('/facilities/:id', async (req, res) => {
   try {
-    const facility = await Facility.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const allowed = [
+      'name',
+      'description',
+      'icon',
+      'capacity',
+      'requiresApproval',
+      'openHours',
+      'seasonOpenDate',
+      'seasonCloseDate',
+      'status',
+      'price',
+      'currency',
+      'pricingType',
+      'blockWhenOverdue',
+      'isActive',
+    ];
+    const updates = Object.fromEntries(
+      Object.entries(req.body).filter(([key]) => allowed.includes(key))
+    );
+    const facility = await Facility.findByIdAndUpdate(req.params.id, updates, { new: true });
     if (!facility) return res.status(404).json({ error: 'Servicio no encontrado' });
     res.json({ facility });
   } catch (err) {
@@ -572,15 +597,127 @@ router.delete('/visitor-parking/:id', async (req, res) => {
 });
 
 // —— Cartera ——
+router.get('/billing-settings', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user);
+    if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
+
+    res.json({
+      billing: getBillingSettings(organization),
+      organizationId: organization._id,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/billing-settings', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user);
+    if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
+
+    const billing = {
+      ...getBillingSettings(organization),
+      ...req.body,
+    };
+
+    organization.settings = organization.settings || {};
+    organization.settings.billing = billing;
+    organization.markModified('settings.billing');
+    await organization.save();
+
+    res.json({ billing: getBillingSettings(organization) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/service-suspensions', async (req, res) => {
+  try {
+    const orgFilter = getOrganizationFilter(req.user);
+    const suspensions = await ServiceSuspension.find(orgFilter)
+      .populate('unitId', 'number tower adminStatus')
+      .populate('facilityIds', 'name slug')
+      .sort({ startAt: -1 });
+
+    res.json({ suspensions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/service-suspensions', async (req, res) => {
+  try {
+    const { organization, building } = await getOrgContext(req.user);
+    const { unitId, facilityIds, startAt, endAt, reason, notes, residentId } = req.body;
+
+    if (!unitId || !facilityIds?.length || !startAt || !endAt) {
+      return res.status(400).json({
+        error: 'Unidad, servicios, fecha inicio y fecha fin son requeridos',
+      });
+    }
+
+    const suspension = await ServiceSuspension.create({
+      organizationId: organization._id,
+      unitId,
+      residentId,
+      facilityIds,
+      startAt,
+      endAt,
+      reason: reason || 'morosidad',
+      notes,
+      createdBy: req.user._id,
+    });
+
+    await suspension.populate('unitId', 'number tower adminStatus');
+    await suspension.populate('facilityIds', 'name slug');
+
+    res.status(201).json({ suspension });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/service-suspensions/:id', async (req, res) => {
+  try {
+    const allowed = ['facilityIds', 'startAt', 'endAt', 'reason', 'notes', 'isActive'];
+    const updates = Object.fromEntries(
+      Object.entries(req.body).filter(([key]) => allowed.includes(key))
+    );
+
+    const suspension = await ServiceSuspension.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+    })
+      .populate('unitId', 'number tower adminStatus')
+      .populate('facilityIds', 'name slug');
+
+    if (!suspension) return res.status(404).json({ error: 'Suspensión no encontrada' });
+    res.json({ suspension });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/service-suspensions/:id', async (req, res) => {
+  try {
+    await ServiceSuspension.findByIdAndDelete(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.get('/cartera', async (req, res) => {
   try {
     const orgFilter = getOrganizationFilter(req.user);
     const period = req.query.period;
+    const { organization } = await getOrgContext(req.user);
+    const billingSettings = getBillingSettings(organization);
 
     const filter = { ...orgFilter };
     if (period) filter.period = period;
 
-    const [paid, pending, overdue, payments] = await Promise.all([
+    const [paid, pending, overdue, rawPayments] = await Promise.all([
       Payment.countDocuments({ ...filter, status: 'paid' }),
       Payment.countDocuments({ ...filter, status: 'pending' }),
       Payment.countDocuments({ ...filter, status: 'overdue' }),
@@ -590,8 +727,20 @@ router.get('/cartera', async (req, res) => {
         .limit(100),
     ]);
 
+    const payments = rawPayments.map((p) => enrichPayment(p, billingSettings));
+    const totalInterest = payments.reduce((sum, p) => sum + (p.interestAmount || 0), 0);
+    const totalDue = payments.reduce((sum, p) => sum + (p.totalDue || 0), 0);
+
     res.json({
-      summary: { paid, pending, overdue, total: paid + pending + overdue },
+      billingSettings,
+      summary: {
+        paid,
+        pending,
+        overdue,
+        total: paid + pending + overdue,
+        totalInterest,
+        totalDue,
+      },
       payments,
     });
   } catch (err) {

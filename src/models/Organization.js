@@ -16,6 +16,12 @@ const organizationSchema = new mongoose.Schema(
     settings: {
       timezone: { type: String, default: 'America/Bogota' },
       currency: { type: String, default: 'COP' },
+      billing: {
+        monthlyInterestRatePercent: { type: Number, default: 1.5, min: 0 },
+        gracePeriodDays: { type: Number, default: 5, min: 0 },
+        maxInterestMonths: { type: Number, default: 12, min: 1 },
+        autoSuggestSuspensionOnOverdue: { type: Boolean, default: true },
+      },
     },
   },
   { timestamps: true }

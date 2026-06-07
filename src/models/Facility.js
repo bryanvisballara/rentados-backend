@@ -19,6 +19,14 @@ const facilitySchema = new mongoose.Schema(
     description: { type: String },
     icon: { type: String },
     capacity: { type: Number },
+    price: { type: Number, default: 0, min: 0 },
+    currency: { type: String, default: 'COP' },
+    pricingType: {
+      type: String,
+      enum: ['free', 'per_use', 'monthly'],
+      default: 'free',
+    },
+    blockWhenOverdue: { type: Boolean, default: true },
     requiresApproval: { type: Boolean, default: false },
     openHours: {
       start: { type: String, default: '06:00' },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { adminApi } from '../../api/client';
+import { adminApi, formatCop } from '../../api/client';
 import '../admin.css';
 
 export default function CarteraPage() {
@@ -20,7 +20,10 @@ export default function CarteraPage() {
     <div className="admin-page">
       <header className="admin-page__header">
         <h1>Cartera</h1>
-        <p>Revisa pagos, pendientes y morosos del conjunto.</p>
+        <p>
+          Pagos, pendientes, morosos e intereses calculados según la configuración de morosidad (
+          {data?.billingSettings?.monthlyInterestRatePercent ?? '—'}% mensual).
+        </p>
       </header>
 
       {error && <div className="admin-error">{error}</div>}
@@ -47,6 +50,14 @@ export default function CarteraPage() {
           <p className="admin-stat__label">Morosos</p>
           <p className="admin-stat__value">{summary?.overdue ?? '—'}</p>
         </div>
+        <div className="admin-stat">
+          <p className="admin-stat__label">Intereses</p>
+          <p className="admin-stat__value">{summary ? formatCop(summary.totalInterest) : '—'}</p>
+        </div>
+        <div className="admin-stat">
+          <p className="admin-stat__label">Total con interés</p>
+          <p className="admin-stat__value">{summary ? formatCop(summary.totalDue) : '—'}</p>
+        </div>
       </div>
 
       <div className="admin-card admin-table-wrap">
@@ -56,7 +67,9 @@ export default function CarteraPage() {
             <tr>
               <th>Unidad</th>
               <th>Periodo</th>
-              <th>Monto</th>
+              <th>Capital</th>
+              <th>Interés</th>
+              <th>Total</th>
               <th>Vencimiento</th>
               <th>Estado</th>
             </tr>
@@ -66,7 +79,9 @@ export default function CarteraPage() {
               <tr key={p._id}>
                 <td>{p.unitId?.number || '—'}</td>
                 <td>{p.period}</td>
-                <td>${p.amount?.toLocaleString('es-CO')}</td>
+                <td>{formatCop(p.amount)}</td>
+                <td>{formatCop(p.interestAmount)}</td>
+                <td>{formatCop(p.totalDue ?? p.amount)}</td>
                 <td>{new Date(p.dueDate).toLocaleDateString()}</td>
                 <td>
                   <span className={`admin-badge admin-badge--${p.status}`}>{p.status}</span>
