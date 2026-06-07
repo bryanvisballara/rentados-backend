@@ -26,6 +26,21 @@ export default function DashboardPage() {
 
       {error && <div className="admin-error">{error}</div>}
 
+      <div className="admin-grid" style={{ marginBottom: '1rem' }}>
+        <div className="admin-stat">
+          <p className="admin-stat__label">Apartamentos / unidades</p>
+          <p className="admin-stat__value">{stats.units ?? '—'}</p>
+        </div>
+        <div className="admin-stat">
+          <p className="admin-stat__label">Torres</p>
+          <p className="admin-stat__value">{stats.towers ?? '—'}</p>
+        </div>
+        <div className="admin-stat">
+          <p className="admin-stat__label">Residentes</p>
+          <p className="admin-stat__value">{stats.residents ?? '—'}</p>
+        </div>
+      </div>
+
       <div className="admin-card">
         <h2>Cartera — {finance.currentPeriod || 'mes actual'}</h2>
         <div className="admin-grid">
@@ -72,18 +87,6 @@ export default function DashboardPage() {
       <div className="admin-card">
         <h2>Resumen operativo</h2>
         <div className="admin-grid">
-          <div className="admin-stat">
-            <p className="admin-stat__label">Torres</p>
-            <p className="admin-stat__value">{stats.towers ?? '—'}</p>
-          </div>
-          <div className="admin-stat">
-            <p className="admin-stat__label">Unidades</p>
-            <p className="admin-stat__value">{stats.units ?? '—'}</p>
-          </div>
-          <div className="admin-stat">
-            <p className="admin-stat__label">Residentes</p>
-            <p className="admin-stat__value">{stats.residents ?? '—'}</p>
-          </div>
           <div className="admin-stat">
             <p className="admin-stat__label">Unidades morosas</p>
             <p className="admin-stat__value">{stats.overdue ?? '—'}</p>

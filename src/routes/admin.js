@@ -13,7 +13,7 @@ const {
   Organization,
   ServiceSuspension,
 } = require('../models');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, getOrganizationFilter } = require('../middleware/auth');
 const { getBillingSettings, enrichPayment } = require('../utils/billing');
 const { syncAutoSuspensions } = require('../utils/autoSuspension');
 const { getOrgContext, getScopedOrgFilter } = require('../utils/tenantContext');
