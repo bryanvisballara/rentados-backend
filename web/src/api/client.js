@@ -4,12 +4,14 @@ import {
   persistSession,
   refreshSession,
 } from './authSession';
+import { getTenantHeaders } from './tenantContext';
 
 const API_BASE = '/api/v1';
 
 export async function api(path, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
+    ...getTenantHeaders(),
     ...options.headers,
   };
 
@@ -140,4 +142,16 @@ export const adminApi = {
 export const residentApi = {
   billing: () => api('/resident/billing'),
   services: () => api('/resident/services'),
+};
+
+export const platformApi = {
+  overview: () => api('/platform/overview'),
+  createConjunto: (body) => api('/platform/conjuntos', { method: 'POST', body }),
+  createBuilding: (orgId, body) =>
+    api(`/platform/organizations/${orgId}/buildings`, { method: 'POST', body }),
+  buildingSummary: (id) => api(`/platform/buildings/${id}/summary`),
+  listAdmins: (orgId) => api(`/platform/organizations/${orgId}/admins`),
+  createAdmin: (orgId, body) =>
+    api(`/platform/organizations/${orgId}/admins`, { method: 'POST', body }),
+  updateAdmin: (id, body) => api(`/platform/admins/${id}`, { method: 'PATCH', body }),
 };

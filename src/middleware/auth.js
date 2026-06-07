@@ -71,6 +71,10 @@ function requireAdmin(req, res, next) {
   return requireRoles(...ADMIN_ROLES)(req, res, next);
 }
 
+function requireSuperAdmin(req, res, next) {
+  return requireRoles('SUPER_ADMIN')(req, res, next);
+}
+
 function getOrganizationFilter(user) {
   if (user.role === 'SUPER_ADMIN') return {};
   return { organizationId: user.organizationId };
@@ -82,6 +86,7 @@ module.exports = {
   authenticate,
   requireRoles,
   requireAdmin,
+  requireSuperAdmin,
   getOrganizationFilter,
   ADMIN_ROLES,
   PORTERIA_ROLES,

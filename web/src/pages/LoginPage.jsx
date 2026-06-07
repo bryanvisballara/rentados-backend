@@ -9,6 +9,7 @@ import './LoginPage.css';
 const REDIRECTS = {
   resident: '/app',
   admin: '/admin',
+  superadmin: '/super-admin',
   provider: '/provider',
   porteria: '/porteria',
 };

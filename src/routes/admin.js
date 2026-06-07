@@ -13,31 +13,23 @@ const {
   Organization,
   ServiceSuspension,
 } = require('../models');
-const { authenticate, requireAdmin, getOrganizationFilter } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { getBillingSettings, enrichPayment } = require('../utils/billing');
 const { syncAutoSuspensions } = require('../utils/autoSuspension');
+const { getOrgContext, getScopedOrgFilter } = require('../utils/tenantContext');
 
 const router = express.Router();
 
 router.use(authenticate, requireAdmin);
 
-async function getOrgContext(user) {
-  const orgFilter = getOrganizationFilter(user);
-  const organization = user.organizationId
-    ? await Organization.findById(user.organizationId)
-    : await Organization.findOne(orgFilter);
-
-  const building = await Building.findOne(
-    user.organizationId ? { organizationId: user.organizationId } : orgFilter
-  ).sort({ createdAt: 1 });
-
-  return { organization, building };
-}
-
 router.get('/context', async (req, res) => {
   try {
-    const { organization, building } = await getOrgContext(req.user);
-    res.json({ organization, building });
+    const { organization, building } = await getOrgContext(req.user, req);
+    res.json({
+      organization,
+      building,
+      needsTenantSelection: req.user.role === 'SUPER_ADMIN' && !organization,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -46,7 +38,7 @@ router.get('/context', async (req, res) => {
 router.get('/dashboard', async (req, res) => {
   try {
     const orgFilter = getOrganizationFilter(req.user);
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.json({ stats: {}, finance: {} });
 
     const buildingFilter = { buildingId: building._id, ...orgFilter };
@@ -135,7 +127,7 @@ router.get('/dashboard', async (req, res) => {
 // —— Torres ——
 router.get('/towers', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.json({ towers: [] });
 
     const towers = await Tower.find({ buildingId: building._id }).sort({ sortOrder: 1, name: 1 });
@@ -147,7 +139,7 @@ router.get('/towers', async (req, res) => {
 
 router.post('/towers', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
     const tower = await Tower.create({
@@ -191,7 +183,7 @@ router.delete('/towers/:id', async (req, res) => {
 // —— Unidades ——
 router.get('/units', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     const filter = building ? { buildingId: building._id } : getOrganizationFilter(req.user);
     if (req.query.type) filter.type = req.query.type;
     if (req.query.towerId) filter.towerId = req.query.towerId;
@@ -208,7 +200,7 @@ router.get('/units', async (req, res) => {
 
 router.post('/units', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
     let towerName = req.body.tower;
@@ -237,7 +229,7 @@ router.post('/units', async (req, res) => {
 
 router.post('/units/bulk', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
     const { towerId, units: items } = req.body;
@@ -307,7 +299,7 @@ router.patch('/units/:id', async (req, res) => {
     if (!unit) return res.status(404).json({ error: 'Unidad no encontrada' });
 
     if (updates.adminStatus !== undefined) {
-      const { organization } = await getOrgContext(req.user);
+      const { organization } = await getOrgContext(req.user, req);
       if (organization?.settings?.billing?.autoSuspension?.enabled) {
         await syncAutoSuspensions(organization, { userId: req.user._id });
       }
@@ -348,7 +340,7 @@ router.get('/units/:id/residents', async (req, res) => {
 // —— Servicios / áreas comunes ——
 router.get('/facilities', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.json({ facilities: [] });
 
     const facilities = await Facility.find({ buildingId: building._id }).sort({ name: 1 });
@@ -360,7 +352,7 @@ router.get('/facilities', async (req, res) => {
 
 router.post('/facilities', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
     const slug = (req.body.slug || req.body.name)
@@ -470,7 +462,7 @@ router.get('/publications', async (req, res) => {
 
 router.post('/publications', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     const publication = await Publication.create({
       organizationId: building?.organizationId || req.user.organizationId,
       buildingId: building?._id,
@@ -516,7 +508,7 @@ router.get('/staff', async (req, res) => {
 
 router.post('/staff', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     const passwordHash = await bcrypt.hash(req.body.password || 'Rentados2026!', 10);
 
     const staff = await User.create({
@@ -584,7 +576,7 @@ router.delete('/staff/:id', async (req, res) => {
 // —— Parqueaderos visitantes ——
 router.get('/visitor-parking', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.json({ spots: [] });
 
     const spots = await VisitorParking.find({ buildingId: building._id }).sort({ spotNumber: 1 });
@@ -596,7 +588,7 @@ router.get('/visitor-parking', async (req, res) => {
 
 router.post('/visitor-parking', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
     const spot = await VisitorParking.create({
@@ -615,7 +607,7 @@ router.post('/visitor-parking', async (req, res) => {
 
 router.post('/visitor-parking/bulk', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
     const count = Number(req.body.count);
@@ -673,7 +665,7 @@ router.delete('/visitor-parking/:id', async (req, res) => {
 // —— Cartera ——
 router.get('/billing-settings', async (req, res) => {
   try {
-    const { organization } = await getOrgContext(req.user);
+    const { organization } = await getOrgContext(req.user, req);
     if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
 
     res.json({
@@ -687,7 +679,7 @@ router.get('/billing-settings', async (req, res) => {
 
 router.patch('/billing-settings', async (req, res) => {
   try {
-    const { organization } = await getOrgContext(req.user);
+    const { organization } = await getOrgContext(req.user, req);
     if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
 
     const current = getBillingSettings(organization);
@@ -733,7 +725,7 @@ router.get('/service-suspensions', async (req, res) => {
 
 router.post('/service-suspensions', async (req, res) => {
   try {
-    const { organization, building } = await getOrgContext(req.user);
+    const { organization, building } = await getOrgContext(req.user, req);
     const { unitId, facilityIds, startAt, endAt, reason, notes, residentId } = req.body;
 
     if (!unitId || !facilityIds?.length || !startAt || !endAt) {
@@ -794,7 +786,7 @@ router.delete('/service-suspensions/:id', async (req, res) => {
 
 router.post('/service-suspensions/sync-auto', async (req, res) => {
   try {
-    const { organization } = await getOrgContext(req.user);
+    const { organization } = await getOrgContext(req.user, req);
     if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
 
     const syncResult = await syncAutoSuspensions(organization, { userId: req.user._id });
@@ -808,7 +800,7 @@ router.get('/cartera', async (req, res) => {
   try {
     const orgFilter = getOrganizationFilter(req.user);
     const period = req.query.period;
-    const { organization } = await getOrgContext(req.user);
+    const { organization } = await getOrgContext(req.user, req);
     const billingSettings = getBillingSettings(organization);
 
     const filter = { ...orgFilter };
@@ -915,7 +907,7 @@ router.get('/residents/:id', async (req, res) => {
 
 router.post('/residents', async (req, res) => {
   try {
-    const { building } = await getOrgContext(req.user);
+    const { building } = await getOrgContext(req.user, req);
     const { email, password, firstName, lastName, phone, unitId, relationship } = req.body;
 
     if (!email || !password || !firstName || !lastName || !unitId) {

@@ -112,3 +112,17 @@
     padding: 1.25rem;
   }
 }
+
+.admin-tenant-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  background: #eef4ff;
+  border: 1px solid #c9daf8;
+  color: #1e3a5f;
+  font-size: 0.875rem;
+}

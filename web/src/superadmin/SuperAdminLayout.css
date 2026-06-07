@@ -1,0 +1,77 @@
+.superadmin-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  background: var(--color-cream);
+}
+
+.superadmin-sidebar {
+  background: #1e3a2f;
+  color: #fff;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.superadmin-sidebar__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.superadmin-sidebar__subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.superadmin-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.superadmin-sidebar__link {
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+}
+
+.superadmin-sidebar__link--active,
+.superadmin-sidebar__link:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.superadmin-sidebar__footer {
+  margin-top: auto;
+}
+
+.superadmin-sidebar__user {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+
+.superadmin-sidebar__logout {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: #fff;
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+
+.superadmin-main {
+  padding: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .superadmin-shell {
+    grid-template-columns: 1fr;
+  }
+}

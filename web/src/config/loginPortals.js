@@ -20,8 +20,21 @@ export const LOGIN_PORTALS = {
     switchPrompt: '¿No eres administrador?',
     switchLinks: [
       { label: 'Portal de residentes', to: '/login' },
+      { label: 'Super administración', to: '/super-admin/login' },
       { label: 'Portería', to: '/porteria/login' },
       { label: 'Prestadores', to: '/provider/login' },
+    ],
+  },
+  superadmin: {
+    id: 'superadmin',
+    title: 'Super administración',
+    subtitle: 'Crea conjuntos residenciales, edificios y asigna administradores.',
+    heroTagline: 'Plataforma Rentados',
+    submitLabel: 'Ingresar',
+    switchPrompt: '¿Buscas otro acceso?',
+    switchLinks: [
+      { label: 'Administración de conjunto', to: '/admin/login' },
+      { label: 'Portal de residentes', to: '/login' },
     ],
   },
   provider: {

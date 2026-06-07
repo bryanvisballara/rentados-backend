@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminLayout from './admin/AdminLayout';
+import SuperAdminLayout from './superadmin/SuperAdminLayout';
+import ConjuntosPage from './superadmin/pages/ConjuntosPage';
 import DashboardPage from './admin/pages/DashboardPage';
 import TowersPage from './admin/pages/TowersPage';
 import FacilitiesPage from './admin/pages/FacilitiesPage';
@@ -22,13 +24,25 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage portal="resident" />} />
       <Route path="/admin/login" element={<LoginPage portal="admin" />} />
+      <Route path="/super-admin/login" element={<LoginPage portal="superadmin" />} />
       <Route path="/provider/login" element={<LoginPage portal="provider" />} />
       <Route path="/porteria/login" element={<PorteriaLoginPage />} />
 
       <Route
+        path="/super-admin"
+        element={
+          <ProtectedRoute roles={['SUPER_ADMIN']} loginPath="/super-admin/login">
+            <SuperAdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<ConjuntosPage />} />
+      </Route>
+
+      <Route
         path="/admin"
         element={
-          <ProtectedRoute roles={['ORG_ADMIN', 'SUPER_ADMIN']}>
+          <ProtectedRoute roles={['ORG_ADMIN', 'SUPER_ADMIN']} loginPath="/admin/login">
             <AdminLayout />
           </ProtectedRoute>
         }

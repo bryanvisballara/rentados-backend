@@ -545,7 +545,7 @@ async function runSeed() {
   console.log('  facilities, publications, payments, visitor_parking');
   console.log('  announcements, quick_actions, emergency_contacts');
   console.log('\nUsuarios demo (password: Rentados2026!):');
-  console.log(`  Super Admin:  ${superAdmin.email}`);
+  console.log(`  Super Admin:  ${superAdmin.email} → /super-admin/login`);
   console.log(`  Org Admin:    ${orgAdmin.email}`);
   console.log(`  Portería:     ${porteriaUser.email}`);
   console.log(`  Residente:    ${residentUser.email}`);

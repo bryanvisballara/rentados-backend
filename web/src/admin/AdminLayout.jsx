@@ -1,16 +1,33 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import Logo from '../components/Logo';
 import { useAuth } from '../context/AuthContext';
+import { clearActiveTenant, getActiveTenant } from '../api/tenantContext';
 import { ADMIN_NAV } from './adminNav';
 import './AdminLayout.css';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const tenant = getActiveTenant();
+
+  if (user?.role === 'SUPER_ADMIN' && !tenant?.organizationId) {
+    return <Navigate to="/super-admin" replace />;
+  }
 
   function handleLogout() {
+    if (user?.role === 'SUPER_ADMIN') {
+      clearActiveTenant();
+      logout();
+      navigate('/super-admin/login');
+      return;
+    }
     logout();
     navigate('/admin/login');
+  }
+
+  function changeConjunto() {
+    clearActiveTenant();
+    navigate('/super-admin');
   }
 
   return (
@@ -50,6 +67,17 @@ export default function AdminLayout() {
       </aside>
 
       <div className="admin-main">
+        {user?.role === 'SUPER_ADMIN' && tenant && (
+          <div className="admin-tenant-banner">
+            <div>
+              <strong>{tenant.buildingName}</strong>
+              <span> · {tenant.organizationName}</span>
+            </div>
+            <button type="button" className="admin-btn admin-btn--ghost" onClick={changeConjunto}>
+              Cambiar conjunto
+            </button>
+          </div>
+        )}
         <Outlet />
       </div>
     </div>

@@ -8,6 +8,7 @@ const router = express.Router();
 const PORTAL_ROLES = {
   resident: ['RESIDENT'],
   admin: ['ORG_ADMIN', 'SUPER_ADMIN'],
+  superadmin: ['SUPER_ADMIN'],
   provider: ['PROVIDER'],
   porteria: ['ORG_STAFF'],
 };
@@ -33,6 +34,12 @@ router.post('/login', async (req, res) => {
     const allowedRoles = PORTAL_ROLES[portal];
     if (allowedRoles && !allowedRoles.includes(user.role)) {
       return res.status(403).json({ error: 'No tienes acceso a este portal' });
+    }
+
+    if (portal === 'admin' && user.role === 'SUPER_ADMIN') {
+      return res.status(403).json({
+        error: 'Usa el portal de super administración en /super-admin/login',
+      });
     }
 
     if (portal === 'porteria' && user.role === 'ORG_STAFF' && user.staffType !== 'porteria') {
