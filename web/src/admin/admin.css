@@ -241,3 +241,15 @@
   margin-top: 0.5rem;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
+
+.admin-table--selectable .admin-table__check {
+  width: 2.5rem;
+}
+
+.admin-checkbox--table {
+  justify-content: center;
+}
+
+.admin-table--selectable tbody tr.is-selected {
+  background: #f4faf6;
+}

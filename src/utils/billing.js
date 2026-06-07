@@ -8,11 +8,18 @@ function daysBetween(start, end) {
 
 function getBillingSettings(org) {
   const billing = org?.settings?.billing || {};
+  const autoSuspension = billing.autoSuspension || {};
   return {
     monthlyInterestRatePercent: billing.monthlyInterestRatePercent ?? 1.5,
     gracePeriodDays: billing.gracePeriodDays ?? 5,
     maxInterestMonths: billing.maxInterestMonths ?? 12,
     autoSuggestSuspensionOnOverdue: billing.autoSuggestSuspensionOnOverdue ?? true,
+    autoSuspension: {
+      enabled: autoSuspension.enabled ?? false,
+      facilityIds: (autoSuspension.facilityIds || []).map(String),
+      durationDays: autoSuspension.durationDays ?? 30,
+      autoLiftWhenPaid: autoSuspension.autoLiftWhenPaid ?? true,
+    },
   };
 }
 

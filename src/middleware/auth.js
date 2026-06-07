@@ -19,8 +19,21 @@ function signToken(user) {
       staffType: user.staffType || null,
     },
     getJwtSecret(),
-    { expiresIn: '7d' }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
   );
+}
+
+function formatAuthUser(user) {
+  return {
+    id: user._id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    role: user.role,
+    staffType: user.staffType,
+    organizationId: user.organizationId,
+    buildingId: user.buildingId,
+  };
 }
 
 async function authenticate(req, res, next) {
@@ -65,6 +78,7 @@ function getOrganizationFilter(user) {
 
 module.exports = {
   signToken,
+  formatAuthUser,
   authenticate,
   requireRoles,
   requireAdmin,

@@ -15,6 +15,7 @@ const {
 } = require('../models');
 const { authenticate, requireAdmin, getOrganizationFilter } = require('../middleware/auth');
 const { getBillingSettings, enrichPayment } = require('../utils/billing');
+const { syncAutoSuspensions } = require('../utils/autoSuspension');
 
 const router = express.Router();
 
@@ -239,6 +240,14 @@ router.patch('/units/:id', async (req, res) => {
       'name code'
     );
     if (!unit) return res.status(404).json({ error: 'Unidad no encontrada' });
+
+    if (updates.adminStatus !== undefined) {
+      const { organization } = await getOrgContext(req.user);
+      if (organization?.settings?.billing?.autoSuspension?.enabled) {
+        await syncAutoSuspensions(organization, { userId: req.user._id });
+      }
+    }
+
     res.json({ unit });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -616,9 +625,15 @@ router.patch('/billing-settings', async (req, res) => {
     const { organization } = await getOrgContext(req.user);
     if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
 
+    const current = getBillingSettings(organization);
+    const { autoSuspension, ...rest } = req.body;
+
     const billing = {
-      ...getBillingSettings(organization),
-      ...req.body,
+      ...current,
+      ...rest,
+      autoSuspension: autoSuspension
+        ? { ...current.autoSuspension, ...autoSuspension }
+        : current.autoSuspension,
     };
 
     organization.settings = organization.settings || {};
@@ -626,7 +641,12 @@ router.patch('/billing-settings', async (req, res) => {
     organization.markModified('settings.billing');
     await organization.save();
 
-    res.json({ billing: getBillingSettings(organization) });
+    let syncResult = null;
+    if (billing.autoSuspension?.enabled) {
+      syncResult = await syncAutoSuspensions(organization, { userId: req.user._id });
+    }
+
+    res.json({ billing: getBillingSettings(organization), syncResult });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -702,6 +722,18 @@ router.delete('/service-suspensions/:id', async (req, res) => {
   try {
     await ServiceSuspension.findByIdAndDelete(req.params.id);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/service-suspensions/sync-auto', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user);
+    if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
+
+    const syncResult = await syncAutoSuspensions(organization, { userId: req.user._id });
+    res.json({ syncResult });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

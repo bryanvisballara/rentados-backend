@@ -80,6 +80,12 @@ async function runSeed() {
         gracePeriodDays: 5,
         maxInterestMonths: 12,
         autoSuggestSuspensionOnOverdue: true,
+        autoSuspension: {
+          enabled: false,
+          facilityIds: [],
+          durationDays: 30,
+          autoLiftWhenPaid: true,
+        },
       },
     },
   });
@@ -394,6 +400,15 @@ async function runSeed() {
     },
   ]);
 
+  org.settings.billing.autoSuspension = {
+    enabled: true,
+    facilityIds: [facilities[0]._id.toString(), facilities[2]._id.toString()],
+    durationDays: 30,
+    autoLiftWhenPaid: true,
+  };
+  org.markModified('settings.billing');
+  await org.save();
+
   const morosoUser = await User.create({
     email: 'moroso@demo.co',
     passwordHash,
@@ -420,9 +435,13 @@ async function runSeed() {
     startAt: new Date('2026-06-01'),
     endAt: new Date('2026-06-30'),
     reason: 'morosidad',
-    notes: 'Suspensión gimnasio y piscina por mora junio 2026',
+    notes: 'Suspensión manual por mora junio 2026',
+    isAutomatic: false,
     createdBy: orgAdmin._id,
   });
+
+  const { syncAutoSuspensions } = require('../utils/autoSuspension');
+  await syncAutoSuspensions(org, { userId: orgAdmin._id });
 
   await Announcement.insertMany([
     {

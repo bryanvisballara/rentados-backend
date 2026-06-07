@@ -1,8 +1,11 @@
-const API_BASE = '/api/v1';
+import {
+  clearSession,
+  getToken,
+  persistSession,
+  refreshSession,
+} from './authSession';
 
-function getToken() {
-  return localStorage.getItem('rentados_token');
-}
+const API_BASE = '/api/v1';
 
 export async function api(path, options = {}) {
   const headers = {
@@ -10,7 +13,8 @@ export async function api(path, options = {}) {
     ...options.headers,
   };
 
-  const token = getToken();
+  const skipAuth = options.skipAuth ?? false;
+  const token = skipAuth ? null : getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${API_BASE}${path}`, {
@@ -29,6 +33,14 @@ export async function api(path, options = {}) {
     }
   }
 
+  if (res.status === 401 && !options._retry && !options.skipAuthRetry && token) {
+    const session = await refreshSession();
+    if (session) {
+      return api(path, { ...options, _retry: true });
+    }
+    clearSession();
+  }
+
   if (!res.ok) {
     if (res.status >= 500 && !data.error) {
       throw new Error(
@@ -45,6 +57,8 @@ export function login(email, password, portal) {
   return api('/auth/login', {
     method: 'POST',
     body: { email, password, portal },
+    skipAuth: true,
+    skipAuthRetry: true,
   });
 }
 
@@ -104,6 +118,7 @@ export const adminApi = {
     create: (body) => api('/admin/service-suspensions', { method: 'POST', body }),
     update: (id, body) => api(`/admin/service-suspensions/${id}`, { method: 'PATCH', body }),
     remove: (id) => api(`/admin/service-suspensions/${id}`, { method: 'DELETE' }),
+    syncAuto: () => api('/admin/service-suspensions/sync-auto', { method: 'POST' }),
   },
   cartera: (period) => {
     const q = period ? `?period=${period}` : '';

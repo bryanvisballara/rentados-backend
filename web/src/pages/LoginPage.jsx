@@ -31,7 +31,10 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
 
     try {
       const data = await loginApi(email, password, portal);
-      loginSuccess(data);
+      loginSuccess({
+        token: data.token,
+        user: data.user,
+      });
       navigate(redirectTo || REDIRECTS[portal] || '/');
     } catch (err) {
       setError(err.message);
@@ -105,8 +108,8 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
 
             <div className="login__actions-row login-animate-in login-animate-in--6">
               <label className="login__remember">
-                <input type="checkbox" name="remember" />
-                <span>Recordarme</span>
+                <input type="checkbox" name="remember" defaultChecked />
+                <span>Mantener sesión iniciada</span>
               </label>
               <a href="#" className="login__link">
                 ¿Olvidaste tu contraseña?

@@ -1,38 +1,65 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  clearSession,
+  formatUser,
+  hydrateSession,
+  loadSession,
+  persistSession,
+} from '../api/authSession';
 
 const AuthContext = createContext(null);
 
-const STORAGE_KEY = 'rentados_auth';
-
-function loadStored() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }) {
-  const [auth, setAuth] = useState(loadStored);
+  const [auth, setAuth] = useState(() => loadSession());
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    hydrateSession()
+      .then((session) => {
+        if (!cancelled) setAuth(session);
+      })
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleSession(event) {
+      setAuth(event.detail);
+    }
+
+    window.addEventListener('rentados:session', handleSession);
+    return () => window.removeEventListener('rentados:session', handleSession);
+  }, []);
 
   const value = useMemo(
     () => ({
       user: auth?.user ?? null,
       token: auth?.token ?? null,
-      isAuthenticated: Boolean(auth?.token),
+      ready,
+      isAuthenticated: Boolean(auth?.token && auth?.user),
       loginSuccess(data) {
-        localStorage.setItem('rentados_token', data.token);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        setAuth(data);
+        const session = { token: data.token, user: formatUser(data.user) };
+        persistSession(session);
+        setAuth(session);
+        setReady(true);
       },
       logout() {
-        localStorage.removeItem('rentados_token');
-        localStorage.removeItem(STORAGE_KEY);
+        clearSession();
         setAuth(null);
       },
+      updateSession(session) {
+        persistSession(session);
+        setAuth(session);
+      },
     }),
-    [auth]
+    [auth, ready]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

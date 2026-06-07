@@ -21,6 +21,12 @@ const organizationSchema = new mongoose.Schema(
         gracePeriodDays: { type: Number, default: 5, min: 0 },
         maxInterestMonths: { type: Number, default: 12, min: 1 },
         autoSuggestSuspensionOnOverdue: { type: Boolean, default: true },
+        autoSuspension: {
+          enabled: { type: Boolean, default: false },
+          facilityIds: [{ type: String }],
+          durationDays: { type: Number, default: 30, min: 1 },
+          autoLiftWhenPaid: { type: Boolean, default: true },
+        },
       },
     },
   },

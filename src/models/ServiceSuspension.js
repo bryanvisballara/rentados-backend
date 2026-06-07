@@ -32,6 +32,7 @@ const serviceSuspensionSchema = new mongoose.Schema(
       default: 'morosidad',
     },
     notes: { type: String, trim: true },
+    isAutomatic: { type: Boolean, default: false, index: true },
     isActive: { type: Boolean, default: true, index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
