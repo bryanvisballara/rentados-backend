@@ -230,9 +230,10 @@ export default function ResidentAssignPage() {
           <label>
             Correo (usuario)
             <input
-              type="email"
+              type="text"
               value={createForm.email}
               onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+              placeholder="Ej: 41201 o usuario@correo.com"
               required
             />
           </label>
@@ -373,7 +374,7 @@ export default function ResidentAssignPage() {
             <label>
               Correo
               <input
-                type="email"
+                type="text"
                 value={editForm.email}
                 onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                 required

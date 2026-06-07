@@ -1071,7 +1071,7 @@ router.post('/residents', async (req, res) => {
     const { email, password, firstName, lastName, phone, unitId, relationship } = req.body;
 
     if (!email || !password || !firstName || !lastName || !unitId) {
-      return res.status(400).json({ error: 'Email, contraseña, nombre y unidad son requeridos' });
+      return res.status(400).json({ error: 'Usuario, contraseña, nombre y unidad son requeridos' });
     }
 
     const unit = await Unit.findById(unitId);
@@ -1079,7 +1079,7 @@ router.post('/residents', async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
-      email,
+      email: String(email).trim().toLowerCase(),
       passwordHash,
       firstName,
       lastName,
