@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { syncUnitIndexes } = require('../utils/syncUnitIndexes');
 
 async function connectDB() {
   const uri = process.env.MONGO_URI;
@@ -13,6 +14,7 @@ async function connectDB() {
   });
 
   console.log('MongoDB conectado — database: rentados');
+  await syncUnitIndexes();
 }
 
 module.exports = { connectDB };

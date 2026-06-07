@@ -286,6 +286,18 @@ router.post('/units/bulk', async (req, res) => {
   }
 });
 
+function bulkWriteErrorMessage(writeError) {
+  return (
+    writeError.errmsg ||
+    writeError.err?.errmsg ||
+    writeError.err?.message ||
+    writeError.message ||
+    (writeError.code === 11000
+      ? 'Número de unidad duplicado en este conjunto'
+      : `Error de base de datos (${writeError.code || 'desconocido'})`)
+  );
+}
+
 router.post('/units/replicate-tower', async (req, res) => {
   try {
     const { building } = await getOrgContext(req.user, req);
@@ -384,7 +396,7 @@ router.post('/units/replicate-tower', async (req, res) => {
             errors.push({
               tower: doc?.tower,
               number: doc?.number,
-              error: writeError.errmsg || writeError.message,
+              error: bulkWriteErrorMessage(writeError),
             });
           }
         } else {
