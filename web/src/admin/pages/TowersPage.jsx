@@ -265,10 +265,18 @@ export default function TowersPage() {
     setUnitForm({
       number: unit.number,
       type: unit.type,
-      towerId: unit.towerId?._id || '',
+      towerId: unit.towerId?._id || unit.towerId || '',
       floor: unit.floor ?? '',
       adminStatus: unit.adminStatus,
     });
+    if (unit.towerId?._id || unit.towerId) {
+      setBulkTowerId(String(unit.towerId?._id || unit.towerId));
+    }
+  }
+
+  function startEditUnitFromRow(row) {
+    const unit = units.find((u) => u._id === row.unitId);
+    if (unit) startEditUnit(unit);
   }
 
   async function removeTower(id) {
@@ -450,9 +458,8 @@ export default function TowersPage() {
         {!editingUnitId ? (
           <>
             <p className="admin-empty" style={{ marginTop: 0 }}>
-              Selecciona una torre para ver las unidades ya registradas y agregar nuevas filas al final.
-              Las unidades existentes aparecen en gris; puedes corregir su piso y guardar. Solo se crean
-              las filas nuevas con número.
+              Selecciona una torre para ver sus unidades y agregar filas nuevas al final. Puedes corregir
+              el piso, editar o eliminar unidades registradas desde la columna Acciones.
             </p>
             <form onSubmit={saveBulkUnits}>
               <div className="admin-form" style={{ marginTop: '1rem' }}>
@@ -493,7 +500,7 @@ export default function TowersPage() {
                       <th>Tipo</th>
                       <th>Estado admin</th>
                       <th>Situación</th>
-                      <th></th>
+                      <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -561,12 +568,28 @@ export default function TowersPage() {
                             </span>
                           </td>
                           <td className="admin-actions">
-                            {!row.existing && (
+                            {row.existing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="admin-btn admin-btn--ghost"
+                                  onClick={() => startEditUnitFromRow(row)}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  className="admin-btn admin-btn--danger"
+                                  onClick={() => removeUnit(row.unitId)}
+                                >
+                                  Eliminar
+                                </button>
+                              </>
+                            ) : (
                               <button
                                 type="button"
                                 className="admin-btn admin-btn--ghost"
                                 onClick={() => removeBulkRow(row.key)}
-                                aria-label="Quitar fila"
                               >
                                 Quitar
                               </button>
@@ -909,43 +932,6 @@ export default function TowersPage() {
                     Editar
                   </button>
                   <button type="button" className="admin-btn admin-btn--danger" onClick={() => removeTower(t._id)}>
-                    Eliminar
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="admin-card admin-table-wrap">
-        <h2>Unidades</h2>
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Número</th>
-              <th>Tipo</th>
-              <th>Torre</th>
-              <th>Piso</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {units.map((u) => (
-              <tr key={u._id}>
-                <td>{u.number}</td>
-                <td>{u.type}</td>
-                <td>{u.towerId?.name || u.tower || '—'}</td>
-                <td>{u.floor ?? '—'}</td>
-                <td>
-                  <span className={`admin-badge admin-badge--${u.adminStatus}`}>{u.adminStatus}</span>
-                </td>
-                <td className="admin-actions">
-                  <button type="button" className="admin-btn admin-btn--ghost" onClick={() => startEditUnit(u)}>
-                    Editar
-                  </button>
-                  <button type="button" className="admin-btn admin-btn--danger" onClick={() => removeUnit(u._id)}>
                     Eliminar
                   </button>
                 </td>
