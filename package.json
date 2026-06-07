@@ -11,7 +11,8 @@
     "seed": "node src/scripts/seed.js",
     "db:sync": "node src/scripts/seed.js",
     "build:web": "npm --prefix web run build",
-    "postbuild": "node scripts/postbuild.js"
+    "postbuild": "node scripts/postbuild.js",
+    "deploy:render": "node scripts/trigger-render-deploy.js"
   },
   "engines": {
     "node": ">=20"

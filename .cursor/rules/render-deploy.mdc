@@ -1,0 +1,16 @@
+---
+description: Tras push a main, reiniciar Render con el deploy hook
+alwaysApply: true
+---
+
+# Deploy en Render
+
+Cuando subas cambios a `main` (commit + push), **siempre** dispara el redeploy de Render al final:
+
+```bash
+npm run deploy:render
+```
+
+- Usa el webhook configurado en `RENDER_DEPLOY_HOOK_URL` (`.env` local, no commitear).
+- Si el comando falla, informa al usuario; no asumas que Render se actualizó solo con el push.
+- No incluir la URL del hook ni la key en commits, reglas ni mensajes al usuario.
