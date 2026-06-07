@@ -267,3 +267,13 @@
 .admin-table-input--sm {
   min-width: 3.5rem;
 }
+
+.admin-table tbody tr.is-existing {
+  background: #f5f5f2;
+}
+
+.admin-table tbody tr.is-existing .admin-table-input {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-muted);
+}

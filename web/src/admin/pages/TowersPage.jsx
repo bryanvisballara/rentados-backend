@@ -12,12 +12,41 @@ function createBulkRow(overrides = {}) {
     floor: '',
     type: 'apartment',
     adminStatus: 'current',
+    existing: false,
+    unitId: null,
     ...overrides,
   };
 }
 
-function createBulkRows(count = 5) {
+function createBulkRows(count = 3) {
   return Array.from({ length: count }, () => createBulkRow());
+}
+
+function getUnitsForTower(towerId, allUnits) {
+  if (towerId) {
+    return allUnits.filter((u) => (u.towerId?._id || u.towerId)?.toString() === towerId);
+  }
+  return allUnits.filter((u) => !u.towerId);
+}
+
+function unitToBulkRow(unit) {
+  return createBulkRow({
+    unitId: unit._id,
+    existing: true,
+    number: unit.number,
+    floor: unit.floor ?? '',
+    type: unit.type,
+    adminStatus: unit.adminStatus,
+  });
+}
+
+function buildBulkRows(towerId, allUnits) {
+  const existing = getUnitsForTower(towerId, allUnits)
+    .map(unitToBulkRow)
+    .sort((a, b) =>
+      String(a.number).localeCompare(String(b.number), 'es', { numeric: true })
+    );
+  return [...existing, ...createBulkRows(existing.length ? 3 : 5)];
 }
 
 export default function TowersPage() {
@@ -28,7 +57,7 @@ export default function TowersPage() {
   const [towerForm, setTowerForm] = useState(emptyTower);
   const [unitForm, setUnitForm] = useState(emptyUnit);
   const [bulkTowerId, setBulkTowerId] = useState('');
-  const [bulkRows, setBulkRows] = useState(() => createBulkRows());
+  const [bulkRows, setBulkRows] = useState([]);
   const [savingBulk, setSavingBulk] = useState(false);
   const [editingTowerId, setEditingTowerId] = useState(null);
   const [editingUnitId, setEditingUnitId] = useState(null);
@@ -42,6 +71,11 @@ export default function TowersPage() {
   useEffect(() => {
     load().catch((err) => setError(err.message));
   }, []);
+
+  useEffect(() => {
+    if (editingUnitId) return;
+    setBulkRows(buildBulkRows(bulkTowerId, units));
+  }, [bulkTowerId, units, editingUnitId]);
 
   async function saveTower(e) {
     e.preventDefault();
@@ -81,7 +115,9 @@ export default function TowersPage() {
   }
 
   function updateBulkRow(key, field, value) {
-    setBulkRows((rows) => rows.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
+    setBulkRows((rows) =>
+      rows.map((row) => (row.key === key && !row.existing ? { ...row, [field]: value } : row))
+    );
   }
 
   function addBulkRow() {
@@ -89,7 +125,7 @@ export default function TowersPage() {
   }
 
   function removeBulkRow(key) {
-    setBulkRows((rows) => (rows.length > 1 ? rows.filter((row) => row.key !== key) : rows));
+    setBulkRows((rows) => rows.filter((row) => row.key !== key || row.existing));
   }
 
   async function saveBulkUnits(e) {
@@ -97,9 +133,9 @@ export default function TowersPage() {
     setError('');
     setSuccess('');
 
-    const items = bulkRows.filter((row) => row.number.trim());
+    const items = bulkRows.filter((row) => !row.existing && row.number.trim());
     if (!items.length) {
-      setError('Agrega al menos un número de unidad');
+      setError('Agrega al menos una unidad nueva con número');
       return;
     }
 
@@ -118,10 +154,9 @@ export default function TowersPage() {
       const failed = data.errors?.length || 0;
       setSuccess(
         failed
-          ? `${data.created} unidad(es) creada(s). ${failed} no se pudieron guardar.`
-          : `${data.created} unidad(es) creada(s) correctamente.`
+          ? `${data.created} unidad(es) nueva(s) creada(s). ${failed} no se pudieron guardar.`
+          : `${data.created} unidad(es) nueva(s) creada(s) correctamente.`
       );
-      setBulkRows(createBulkRows());
       await load();
     } catch (err) {
       setError(err.message);
@@ -180,7 +215,8 @@ export default function TowersPage() {
   }
 
   const selectedBulkTower = towers.find((t) => t._id === bulkTowerId);
-  const filledBulkCount = bulkRows.filter((row) => row.number.trim()).length;
+  const existingBulkCount = bulkRows.filter((row) => row.existing).length;
+  const newBulkCount = bulkRows.filter((row) => !row.existing && row.number.trim()).length;
 
   return (
     <div className="admin-page">
@@ -248,8 +284,8 @@ export default function TowersPage() {
         {!editingUnitId ? (
           <>
             <p className="admin-empty" style={{ marginTop: 0 }}>
-              Selecciona una torre y agrega varias unidades en la tabla. Deja en blanco las filas que
-              no uses.
+              Selecciona una torre para ver las unidades ya registradas y agregar nuevas filas al final.
+              Las unidades existentes aparecen en gris; solo se crean las filas nuevas.
             </p>
             <form onSubmit={saveBulkUnits}>
               <div className="admin-form" style={{ marginTop: '1rem' }}>
@@ -269,14 +305,17 @@ export default function TowersPage() {
                 </label>
                 {selectedBulkTower && (
                   <label>
-                    Referencia
-                    <input
-                      value={`${selectedBulkTower.name} · ${selectedBulkTower.floors || '?'} pisos`}
-                      readOnly
-                    />
+                    Unidades registradas
+                    <input value={`${existingBulkCount} en ${selectedBulkTower.name}`} readOnly />
                   </label>
                 )}
               </div>
+
+              {bulkRows.length === 0 && !bulkTowerId && towers.length > 0 && (
+                <p className="admin-empty" style={{ marginTop: '1rem' }}>
+                  Selecciona una torre para cargar sus unidades.
+                </p>
+              )}
 
               <div className="admin-table-wrap" style={{ marginTop: '1rem' }}>
                 <table className="admin-table">
@@ -286,75 +325,99 @@ export default function TowersPage() {
                       <th>Piso</th>
                       <th>Tipo</th>
                       <th>Estado admin</th>
+                      <th>Situación</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {bulkRows.map((row) => (
-                      <tr key={row.key}>
-                        <td>
-                          <input
-                            className="admin-table-input"
-                            value={row.number}
-                            onChange={(e) => updateBulkRow(row.key, 'number', e.target.value)}
-                            placeholder={bulkTowerId ? 'Ej: 701' : 'Ej: Casa 12'}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="admin-table-input admin-table-input--sm"
-                            type="number"
-                            value={row.floor}
-                            onChange={(e) => updateBulkRow(row.key, 'floor', e.target.value)}
-                            placeholder="—"
-                          />
-                        </td>
-                        <td>
-                          <select
-                            className="admin-table-input"
-                            value={row.type}
-                            onChange={(e) => updateBulkRow(row.key, 'type', e.target.value)}
-                          >
-                            <option value="apartment">Apartamento</option>
-                            <option value="house">Casa</option>
-                            <option value="commercial">Comercial</option>
-                          </select>
-                        </td>
-                        <td>
-                          <select
-                            className="admin-table-input"
-                            value={row.adminStatus}
-                            onChange={(e) => updateBulkRow(row.key, 'adminStatus', e.target.value)}
-                          >
-                            <option value="current">Al día</option>
-                            <option value="pending">Pendiente</option>
-                            <option value="overdue">Moroso</option>
-                          </select>
-                        </td>
-                        <td className="admin-actions">
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn--ghost"
-                            onClick={() => removeBulkRow(row.key)}
-                            aria-label="Quitar fila"
-                          >
-                            Quitar
-                          </button>
+                    {bulkRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="admin-empty">
+                          {bulkTowerId || !towers.length
+                            ? 'No hay unidades registradas en esta torre. Usa las filas nuevas abajo.'
+                            : 'Selecciona una torre para ver sus unidades.'}
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      bulkRows.map((row) => (
+                        <tr key={row.key} className={row.existing ? 'is-existing' : ''}>
+                          <td>
+                            <input
+                              className="admin-table-input"
+                              value={row.number}
+                              onChange={(e) => updateBulkRow(row.key, 'number', e.target.value)}
+                              placeholder={bulkTowerId ? 'Ej: 701' : 'Ej: Casa 12'}
+                              readOnly={row.existing}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              className="admin-table-input admin-table-input--sm"
+                              type="number"
+                              value={row.floor}
+                              onChange={(e) => updateBulkRow(row.key, 'floor', e.target.value)}
+                              placeholder="—"
+                              readOnly={row.existing}
+                            />
+                          </td>
+                          <td>
+                            <select
+                              className="admin-table-input"
+                              value={row.type}
+                              onChange={(e) => updateBulkRow(row.key, 'type', e.target.value)}
+                              disabled={row.existing}
+                            >
+                              <option value="apartment">Apartamento</option>
+                              <option value="house">Casa</option>
+                              <option value="commercial">Comercial</option>
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              className="admin-table-input"
+                              value={row.adminStatus}
+                              onChange={(e) => updateBulkRow(row.key, 'adminStatus', e.target.value)}
+                              disabled={row.existing}
+                            >
+                              <option value="current">Al día</option>
+                              <option value="pending">Pendiente</option>
+                              <option value="overdue">Moroso</option>
+                            </select>
+                          </td>
+                          <td>
+                            <span
+                              className={`admin-badge admin-badge--${row.existing ? 'paid' : 'pending'}`}
+                            >
+                              {row.existing ? 'Registrada' : 'Nueva'}
+                            </span>
+                          </td>
+                          <td className="admin-actions">
+                            {!row.existing && (
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--ghost"
+                                onClick={() => removeBulkRow(row.key)}
+                                aria-label="Quitar fila"
+                              >
+                                Quitar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
 
               <div className="admin-actions" style={{ marginTop: '1rem' }}>
                 <button type="button" className="admin-btn admin-btn--ghost" onClick={addBulkRow}>
-                  + Agregar fila
+                  + Agregar fila nueva
                 </button>
-                <button type="submit" className="admin-btn" disabled={savingBulk || !filledBulkCount}>
+                <button type="submit" className="admin-btn" disabled={savingBulk || !newBulkCount}>
                   {savingBulk
                     ? 'Guardando…'
-                    : `Guardar unidades${filledBulkCount ? ` (${filledBulkCount})` : ''}`}
+                    : `Guardar unidades nuevas${newBulkCount ? ` (${newBulkCount})` : ''}`}
                 </button>
               </div>
             </form>
