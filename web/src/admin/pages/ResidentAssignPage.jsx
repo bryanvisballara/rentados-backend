@@ -36,6 +36,88 @@ const RELATIONSHIP_LABELS = {
   family: 'Familiar',
 };
 
+function formatUnitLabel(unit) {
+  const tower = unit.towerId?.name || unit.tower;
+  return `${unit.number}${tower ? ` · ${tower}` : ''} (${unit.type})`;
+}
+
+function UnitSelectField({
+  units,
+  towers,
+  value,
+  onChange,
+  required = false,
+  placeholder = 'Seleccionar unidad',
+  allowEmpty = false,
+  emptyLabel = 'Todas',
+}) {
+  const [towerFilter, setTowerFilter] = useState('');
+  const [query, setQuery] = useState('');
+
+  const filteredUnits = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return units.filter((unit) => {
+      const towerName = unit.towerId?.name || unit.tower || '';
+      if (towerFilter && towerName !== towerFilter) return false;
+      if (!q) return true;
+      return (
+        String(unit.number).toLowerCase().includes(q) ||
+        towerName.toLowerCase().includes(q)
+      );
+    });
+  }, [units, towerFilter, query]);
+
+  const valueInList = !value || filteredUnits.some((u) => u._id === value);
+
+  return (
+    <div className="admin-unit-picker">
+      <div className="admin-unit-picker__filters">
+        <select
+          value={towerFilter}
+          onChange={(e) => setTowerFilter(e.target.value)}
+          aria-label="Filtrar por torre"
+        >
+          <option value="">Todas las torres</option>
+          {towers.map((tower) => (
+            <option key={tower} value={tower}>
+              {tower}
+            </option>
+          ))}
+        </select>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar número o torre"
+          aria-label="Buscar unidad"
+        />
+      </div>
+      <p className="admin-unit-picker__meta">
+        {filteredUnits.length} de {units.length} unidad(es)
+        {value && !valueInList ? ' · selección fuera del filtro actual' : ''}
+      </p>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required && !allowEmpty}
+        size={Math.min(Math.max(filteredUnits.length + (allowEmpty ? 1 : 0), 4), 8)}
+        className="admin-unit-picker__list"
+      >
+        {allowEmpty && <option value="">{emptyLabel}</option>}
+        {!allowEmpty && <option value="">{placeholder}</option>}
+        {filteredUnits.map((unit) => (
+          <option key={unit._id} value={unit._id}>
+            {formatUnitLabel(unit)}
+          </option>
+        ))}
+      </select>
+      {filteredUnits.length === 0 && (
+        <p className="admin-unit-picker__empty">No hay unidades con ese filtro.</p>
+      )}
+    </div>
+  );
+}
+
 export default function ResidentAssignPage() {
   const [units, setUnits] = useState([]);
   const [residents, setResidents] = useState([]);
@@ -162,20 +244,15 @@ export default function ResidentAssignPage() {
               required
             />
           </label>
-          <label>
+          <label className="admin-unit-picker-field">
             Unidad
-            <select
+            <UnitSelectField
+              units={units}
+              towers={towers}
               value={createForm.unitId}
-              onChange={(e) => setCreateForm({ ...createForm, unitId: e.target.value })}
+              onChange={(unitId) => setCreateForm({ ...createForm, unitId })}
               required
-            >
-              <option value="">Seleccionar unidad</option>
-              {units.map((u) => (
-                <option key={u._id} value={u._id}>
-                  {u.number} {u.towerId?.name ? `· ${u.towerId.name}` : ''} ({u.type})
-                </option>
-              ))}
-            </select>
+            />
           </label>
           <label>
             Relación
@@ -209,19 +286,16 @@ export default function ResidentAssignPage() {
               placeholder="Nombre, correo o unidad"
             />
           </label>
-          <label>
+          <label className="admin-unit-picker-field">
             Unidad
-            <select
+            <UnitSelectField
+              units={units}
+              towers={towers}
               value={filters.unitId}
-              onChange={(e) => setFilters({ ...filters, unitId: e.target.value })}
-            >
-              <option value="">Todas</option>
-              {units.map((u) => (
-                <option key={u._id} value={u._id}>
-                  {u.number} {u.towerId?.name ? `· ${u.towerId.name}` : ''}
-                </option>
-              ))}
-            </select>
+              onChange={(unitId) => setFilters({ ...filters, unitId })}
+              allowEmpty
+              emptyLabel="Todas"
+            />
           </label>
           <label>
             Torre

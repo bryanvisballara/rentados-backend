@@ -358,3 +358,50 @@
     transform: rotate(360deg);
   }
 }
+
+.admin-unit-picker-field {
+  grid-column: 1 / -1;
+}
+
+.admin-unit-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-unit-picker__filters {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr;
+  gap: 0.5rem;
+}
+
+.admin-unit-picker__filters select,
+.admin-unit-picker__filters input {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  background: var(--color-white);
+}
+
+.admin-unit-picker__meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.admin-unit-picker__list {
+  width: 100%;
+  min-height: 6.5rem;
+  padding: 0.35rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  background: var(--color-white);
+}
+
+.admin-unit-picker__empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
