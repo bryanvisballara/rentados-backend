@@ -80,6 +80,7 @@ export const adminApi = {
       return api(`/admin/units${q ? `?${q}` : ''}`);
     },
     create: (body) => api('/admin/units', { method: 'POST', body }),
+    bulkCreate: (body) => api('/admin/units/bulk', { method: 'POST', body }),
     update: (id, body) => api(`/admin/units/${id}`, { method: 'PATCH', body }),
     remove: (id) => api(`/admin/units/${id}`, { method: 'DELETE' }),
     residents: (unitId) => api(`/admin/units/${unitId}/residents`),

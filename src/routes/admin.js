@@ -211,12 +211,18 @@ router.post('/units', async (req, res) => {
     const { building } = await getOrgContext(req.user);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
+    let towerName = req.body.tower;
+    if (req.body.towerId && !towerName) {
+      const tower = await Tower.findById(req.body.towerId);
+      towerName = tower?.name;
+    }
+
     const unit = await Unit.create({
       organizationId: building.organizationId,
       buildingId: building._id,
       towerId: req.body.towerId || null,
       number: req.body.number,
-      tower: req.body.tower,
+      tower: towerName,
       floor: req.body.floor,
       type: req.body.type || 'apartment',
       areaSqm: req.body.areaSqm,
@@ -224,6 +230,65 @@ router.post('/units', async (req, res) => {
     });
 
     res.status(201).json({ unit });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/units/bulk', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user);
+    if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
+
+    const { towerId, units: items } = req.body;
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ error: 'Debes enviar al menos una unidad' });
+    }
+
+    let towerName = null;
+    if (towerId) {
+      const tower = await Tower.findById(towerId);
+      if (!tower) return res.status(404).json({ error: 'Torre no encontrada' });
+      towerName = tower.name;
+    }
+
+    const created = [];
+    const errors = [];
+
+    for (const item of items) {
+      const number = item.number?.trim();
+      if (!number) continue;
+
+      try {
+        const unit = await Unit.create({
+          organizationId: building.organizationId,
+          buildingId: building._id,
+          towerId: towerId || null,
+          tower: towerName || item.tower || undefined,
+          number,
+          floor: item.floor !== '' && item.floor != null ? Number(item.floor) : undefined,
+          type: item.type || 'apartment',
+          areaSqm: item.areaSqm,
+          adminStatus: item.adminStatus || 'current',
+        });
+        created.push(unit);
+      } catch (err) {
+        errors.push({ number, error: err.message });
+      }
+    }
+
+    if (!created.length && errors.length) {
+      return res.status(400).json({
+        error: errors[0].error,
+        errors,
+      });
+    }
+
+    res.status(201).json({
+      units: created,
+      created: created.length,
+      errors,
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

@@ -253,3 +253,17 @@
 .admin-table--selectable tbody tr.is-selected {
   background: #f4faf6;
 }
+
+.admin-table-input {
+  width: 100%;
+  min-width: 4.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  background: var(--color-white);
+}
+
+.admin-table-input--sm {
+  min-width: 3.5rem;
+}
