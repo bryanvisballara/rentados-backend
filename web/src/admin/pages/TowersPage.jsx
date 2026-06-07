@@ -10,8 +10,6 @@ function createBulkRow(overrides = {}) {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     number: '',
     floor: '',
-    savedFloor: '',
-    dirty: false,
     type: 'apartment',
     adminStatus: 'current',
     existing: false,
@@ -32,13 +30,11 @@ function getUnitsForTower(towerId, allUnits) {
 }
 
 function unitToBulkRow(unit) {
-  const floor = unit.floor ?? '';
   return createBulkRow({
     unitId: unit._id,
     existing: true,
     number: unit.number,
-    floor,
-    savedFloor: floor,
+    floor: unit.floor ?? '',
     type: unit.type,
     adminStatus: unit.adminStatus,
   });
@@ -134,16 +130,9 @@ export default function TowersPage() {
 
   function updateBulkRow(key, field, value) {
     setBulkRows((rows) =>
-      rows.map((row) => {
-        if (row.key !== key) return row;
-        if (row.existing && field !== 'floor') return row;
-
-        const next = { ...row, [field]: value };
-        if (row.existing && field === 'floor') {
-          next.dirty = String(value ?? '') !== String(row.savedFloor ?? '');
-        }
-        return next;
-      })
+      rows.map((row) =>
+        row.key === key && !row.existing ? { ...row, [field]: value } : row
+      )
     );
   }
 
@@ -161,15 +150,13 @@ export default function TowersPage() {
     setSuccess('');
 
     const newItems = bulkRows.filter((row) => !row.existing && row.number.trim());
-    const dirtyExisting = bulkRows.filter((row) => row.existing && row.dirty);
-
-    if (!newItems.length && !dirtyExisting.length) {
-      setError('Agrega unidades nuevas o corrige el piso de las registradas');
+    if (!newItems.length) {
+      setError('Agrega al menos una unidad nueva con número');
       return;
     }
 
     const payload = [];
-    for (const row of [...newItems, ...dirtyExisting]) {
+    for (const row of newItems) {
       const parsed = parseBulkFloor(row.floor);
       if (!parsed.ok) {
         setError(`Piso inválido en la unidad ${row.number || 'sin número'}`);
@@ -180,43 +167,22 @@ export default function TowersPage() {
 
     setSavingBulk(true);
     try {
-      let updated = 0;
-      let created = 0;
+      const data = await adminApi.units.bulkCreate({
+        towerId: bulkTowerId || null,
+        units: payload.map(({ row, floor }) => ({
+          number: row.number.trim(),
+          floor,
+          type: row.type,
+          adminStatus: row.adminStatus,
+        })),
+      });
 
-      for (const { row, floor } of payload.filter(({ row }) => row.existing)) {
-        await adminApi.units.update(row.unitId, { floor: floor ?? null });
-        updated += 1;
-      }
-
-      const toCreate = payload.filter(({ row }) => !row.existing);
-      if (toCreate.length) {
-        const data = await adminApi.units.bulkCreate({
-          towerId: bulkTowerId || null,
-          units: toCreate.map(({ row, floor }) => ({
-            number: row.number.trim(),
-            floor,
-            type: row.type,
-            adminStatus: row.adminStatus,
-          })),
-        });
-
-        created = data.created || 0;
-        const failed = data.errors?.length || 0;
-        if (failed) {
-          setSuccess(
-            `${created} unidad(es) nueva(s) creada(s). ${updated} piso(s) actualizado(s). ${failed} no se pudieron guardar.`
-          );
-          await load();
-          return;
-        }
-      }
-
+      const created = data.created || 0;
+      const failed = data.errors?.length || 0;
       setSuccess(
-        created && updated
-          ? `${created} unidad(es) nueva(s) creada(s) y ${updated} piso(s) actualizado(s).`
-          : created
-            ? `${created} unidad(es) nueva(s) creada(s) correctamente.`
-            : `${updated} piso(s) actualizado(s) correctamente.`
+        failed
+          ? `${created} unidad(es) nueva(s) creada(s). ${failed} no se pudieron guardar.`
+          : `${created} unidad(es) nueva(s) creada(s) correctamente.`
       );
       await load();
     } catch (err) {
@@ -367,7 +333,6 @@ export default function TowersPage() {
   const selectedBulkTower = towers.find((t) => t._id === bulkTowerId);
   const existingBulkCount = bulkRows.filter((row) => row.existing).length;
   const newBulkCount = bulkRows.filter((row) => !row.existing && row.number.trim()).length;
-  const dirtyBulkCount = bulkRows.filter((row) => row.existing && row.dirty).length;
 
   const sourceUnits = useMemo(
     () => getUnitsForTower(replicateSourceId, units),
@@ -458,8 +423,8 @@ export default function TowersPage() {
         {!editingUnitId ? (
           <>
             <p className="admin-empty" style={{ marginTop: 0 }}>
-              Selecciona una torre para ver sus unidades y agregar filas nuevas al final. Puedes corregir
-              el piso, editar o eliminar unidades registradas desde la columna Acciones.
+              Selecciona una torre para ver sus unidades y agregar filas nuevas al final. Para cambiar una
+              unidad registrada usa Editar en la columna Acciones.
             </p>
             <form onSubmit={saveBulkUnits}>
               <div className="admin-form" style={{ marginTop: '1rem' }}>
@@ -525,14 +490,18 @@ export default function TowersPage() {
                             />
                           </td>
                           <td>
-                            <input
-                              className="admin-table-input admin-table-input--sm admin-table-input--editable"
-                              type="text"
-                              inputMode="numeric"
-                              value={row.floor}
-                              onChange={(e) => updateBulkRow(row.key, 'floor', e.target.value)}
-                              placeholder="—"
-                            />
+                            {row.existing ? (
+                              row.floor !== '' && row.floor != null ? row.floor : '—'
+                            ) : (
+                              <input
+                                className="admin-table-input admin-table-input--sm"
+                                type="text"
+                                inputMode="numeric"
+                                value={row.floor}
+                                onChange={(e) => updateBulkRow(row.key, 'floor', e.target.value)}
+                                placeholder="—"
+                              />
+                            )}
                           </td>
                           <td>
                             <select
@@ -560,11 +529,9 @@ export default function TowersPage() {
                           </td>
                           <td>
                             <span
-                              className={`admin-badge admin-badge--${
-                                row.existing ? (row.dirty ? 'pending' : 'paid') : 'pending'
-                              }`}
+                              className={`admin-badge admin-badge--${row.existing ? 'paid' : 'pending'}`}
                             >
-                              {row.existing ? (row.dirty ? 'Modificada' : 'Registrada') : 'Nueva'}
+                              {row.existing ? 'Registrada' : 'Nueva'}
                             </span>
                           </td>
                           <td className="admin-actions">
@@ -619,20 +586,11 @@ export default function TowersPage() {
                 <button
                   type="submit"
                   className="admin-btn"
-                  disabled={savingBulk || (!newBulkCount && !dirtyBulkCount)}
+                  disabled={savingBulk || !newBulkCount}
                 >
                   {savingBulk
                     ? 'Guardando…'
-                    : `Guardar cambios${
-                        newBulkCount || dirtyBulkCount
-                          ? ` (${[
-                              newBulkCount ? `${newBulkCount} nueva(s)` : '',
-                              dirtyBulkCount ? `${dirtyBulkCount} piso(s)` : '',
-                            ]
-                              .filter(Boolean)
-                              .join(', ')})`
-                          : ''
-                      }`}
+                    : `Guardar unidades nuevas${newBulkCount ? ` (${newBulkCount})` : ''}`}
                 </button>
               </div>
             </form>
