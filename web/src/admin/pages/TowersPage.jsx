@@ -59,6 +59,7 @@ export default function TowersPage() {
   const [bulkTowerId, setBulkTowerId] = useState('');
   const [bulkRows, setBulkRows] = useState([]);
   const [savingBulk, setSavingBulk] = useState(false);
+  const [syncingFloors, setSyncingFloors] = useState(false);
   const [replicateSourceId, setReplicateSourceId] = useState('');
   const [replicateTargetIds, setReplicateTargetIds] = useState([]);
   const [replicateModal, setReplicateModal] = useState(null);
@@ -169,6 +170,31 @@ export default function TowersPage() {
     }
   }
 
+  async function syncTowerFloors() {
+    if (!bulkTowerId) {
+      setError('Selecciona una torre para recalcular pisos');
+      return;
+    }
+
+    setError('');
+    setSuccess('');
+    setSyncingFloors(true);
+
+    try {
+      const data = await adminApi.units.syncFloors({ towerId: bulkTowerId });
+      setSuccess(
+        data.updated
+          ? `${data.updated} piso(s) actualizado(s) según el número del apartamento.`
+          : 'Los pisos ya coinciden con los números de apartamento.'
+      );
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSyncingFloors(false);
+    }
+  }
+
   function startEditTower(tower) {
     setEditingTowerId(tower._id);
     setTowerForm({
@@ -253,11 +279,16 @@ export default function TowersPage() {
     });
 
     try {
+      const targetIds = [...replicateTargetIds];
       const data = await adminApi.units.replicateTower({
         sourceTowerId: replicateSourceId,
-        targetTowerIds: replicateTargetIds.map(String),
+        targetTowerIds: targetIds.map(String),
         skipExisting: true,
       });
+
+      for (const towerId of targetIds) {
+        await adminApi.units.syncFloors({ towerId });
+      }
 
       setReplicateModal({
         status: 'success',
@@ -496,6 +527,16 @@ export default function TowersPage() {
                 <button type="button" className="admin-btn admin-btn--ghost" onClick={addBulkRow}>
                   + Agregar fila nueva
                 </button>
+                {bulkTowerId && (
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost"
+                    onClick={syncTowerFloors}
+                    disabled={syncingFloors}
+                  >
+                    {syncingFloors ? 'Recalculando…' : 'Recalcular pisos desde número'}
+                  </button>
+                )}
                 <button type="submit" className="admin-btn" disabled={savingBulk || !newBulkCount}>
                   {savingBulk
                     ? 'Guardando…'

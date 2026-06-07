@@ -17,6 +17,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const { getBillingSettings, enrichPayment } = require('../utils/billing');
 const { syncAutoSuspensions } = require('../utils/autoSuspension');
 const { getOrgContext, getScopedOrgFilter } = require('../utils/tenantContext');
+const { resolveUnitFloor } = require('../utils/unitFloor');
 
 const router = express.Router();
 
@@ -258,7 +259,7 @@ router.post('/units/bulk', async (req, res) => {
           towerId: towerId || null,
           tower: towerName || item.tower || undefined,
           number,
-          floor: item.floor !== '' && item.floor != null ? Number(item.floor) : undefined,
+          floor: resolveUnitFloor(number, item.floor),
           type: item.type || 'apartment',
           areaSqm: item.areaSqm,
           adminStatus: item.adminStatus || 'current',
@@ -373,7 +374,7 @@ router.post('/units/replicate-tower', async (req, res) => {
           towerId: targetTower._id,
           tower: targetTower.name,
           number: sourceUnit.number,
-          floor: sourceUnit.floor,
+          floor: resolveUnitFloor(sourceUnit.number, sourceUnit.floor),
           type: sourceUnit.type,
           areaSqm: sourceUnit.areaSqm,
           adminStatus: 'current',
@@ -413,6 +414,32 @@ router.post('/units/replicate-tower', async (req, res) => {
       sourceUnits: sourceUnits.length,
       errors,
     });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/units/sync-floors', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
+
+    const { towerId } = req.body;
+    const filter = { buildingId: building._id };
+    if (towerId) filter.towerId = towerId;
+
+    const units = await Unit.find(filter).select('number floor');
+    let updated = 0;
+
+    for (const unit of units) {
+      const nextFloor = resolveUnitFloor(unit.number, unit.floor);
+      if (nextFloor == null || nextFloor === unit.floor) continue;
+      unit.floor = nextFloor;
+      await unit.save();
+      updated += 1;
+    }
+
+    res.json({ updated, total: units.length, towerId: towerId || null });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
