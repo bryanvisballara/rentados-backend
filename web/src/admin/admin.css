@@ -278,6 +278,12 @@
   color: var(--color-text-muted);
 }
 
+.admin-table tbody tr.is-existing .admin-table-input--editable {
+  background: var(--color-white);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
 .admin-modal-overlay {
   position: fixed;
   inset: 0;

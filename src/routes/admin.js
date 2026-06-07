@@ -17,7 +17,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const { getBillingSettings, enrichPayment } = require('../utils/billing');
 const { syncAutoSuspensions } = require('../utils/autoSuspension');
 const { getOrgContext, getScopedOrgFilter } = require('../utils/tenantContext');
-const { resolveUnitFloor } = require('../utils/unitFloor');
+const { parseUnitFloor, inferFloorFromUnitNumber } = require('../utils/unitFloor');
 
 const router = express.Router();
 
@@ -259,7 +259,7 @@ router.post('/units/bulk', async (req, res) => {
           towerId: towerId || null,
           tower: towerName || item.tower || undefined,
           number,
-          floor: resolveUnitFloor(number, item.floor),
+          floor: parseUnitFloor(item.floor),
           type: item.type || 'apartment',
           areaSqm: item.areaSqm,
           adminStatus: item.adminStatus || 'current',
@@ -374,7 +374,7 @@ router.post('/units/replicate-tower', async (req, res) => {
           towerId: targetTower._id,
           tower: targetTower.name,
           number: sourceUnit.number,
-          floor: resolveUnitFloor(sourceUnit.number, sourceUnit.floor),
+          floor: sourceUnit.floor,
           type: sourceUnit.type,
           areaSqm: sourceUnit.areaSqm,
           adminStatus: 'current',
@@ -432,9 +432,10 @@ router.post('/units/sync-floors', async (req, res) => {
     let updated = 0;
 
     for (const unit of units) {
-      const nextFloor = resolveUnitFloor(unit.number, unit.floor);
-      if (nextFloor == null || nextFloor === unit.floor) continue;
-      unit.floor = nextFloor;
+      if (unit.floor != null) continue;
+      const inferred = inferFloorFromUnitNumber(unit.number);
+      if (inferred == null) continue;
+      unit.floor = inferred;
       await unit.save();
       updated += 1;
     }

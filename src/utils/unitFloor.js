@@ -1,3 +1,10 @@
+function parseUnitFloor(value) {
+  if (value === '' || value == null) return undefined;
+  const parsed = Number(String(value).trim());
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.trunc(parsed);
+}
+
 function inferFloorFromUnitNumber(number) {
   const digits = String(number ?? '').replace(/\D/g, '');
   if (!digits) return undefined;
@@ -10,21 +17,7 @@ function inferFloorFromUnitNumber(number) {
   return Number.isFinite(floor) && floor > 0 ? floor : undefined;
 }
 
-function resolveUnitFloor(number, explicitFloor) {
-  const inferred = inferFloorFromUnitNumber(number);
-  const explicit =
-    explicitFloor !== '' && explicitFloor != null ? Number(explicitFloor) : undefined;
-
-  if (explicit == null || Number.isNaN(explicit)) return inferred;
-  if (inferred == null) return explicit;
-
-  // Corrige cargas masivas donde dejaron piso 1 en aptos 201, 401, etc.
-  if (explicit === 1 && inferred > 1) return inferred;
-
-  return explicit;
-}
-
 module.exports = {
+  parseUnitFloor,
   inferFloorFromUnitNumber,
-  resolveUnitFloor,
 };

@@ -10,6 +10,8 @@ function createBulkRow(overrides = {}) {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     number: '',
     floor: '',
+    savedFloor: '',
+    dirty: false,
     type: 'apartment',
     adminStatus: 'current',
     existing: false,
@@ -30,14 +32,25 @@ function getUnitsForTower(towerId, allUnits) {
 }
 
 function unitToBulkRow(unit) {
+  const floor = unit.floor ?? '';
   return createBulkRow({
     unitId: unit._id,
     existing: true,
     number: unit.number,
-    floor: unit.floor ?? '',
+    floor,
+    savedFloor: floor,
     type: unit.type,
     adminStatus: unit.adminStatus,
   });
+}
+
+function parseBulkFloor(value) {
+  if (value === '' || value == null) return { ok: true, value: undefined };
+  const parsed = Number(String(value).trim());
+  if (!Number.isFinite(parsed)) {
+    return { ok: false, value: undefined };
+  }
+  return { ok: true, value: Math.trunc(parsed) };
 }
 
 function buildBulkRows(towerId, allUnits) {
@@ -121,7 +134,16 @@ export default function TowersPage() {
 
   function updateBulkRow(key, field, value) {
     setBulkRows((rows) =>
-      rows.map((row) => (row.key === key && !row.existing ? { ...row, [field]: value } : row))
+      rows.map((row) => {
+        if (row.key !== key) return row;
+        if (row.existing && field !== 'floor') return row;
+
+        const next = { ...row, [field]: value };
+        if (row.existing && field === 'floor') {
+          next.dirty = String(value ?? '') !== String(row.savedFloor ?? '');
+        }
+        return next;
+      })
     );
   }
 
@@ -138,29 +160,63 @@ export default function TowersPage() {
     setError('');
     setSuccess('');
 
-    const items = bulkRows.filter((row) => !row.existing && row.number.trim());
-    if (!items.length) {
-      setError('Agrega al menos una unidad nueva con número');
+    const newItems = bulkRows.filter((row) => !row.existing && row.number.trim());
+    const dirtyExisting = bulkRows.filter((row) => row.existing && row.dirty);
+
+    if (!newItems.length && !dirtyExisting.length) {
+      setError('Agrega unidades nuevas o corrige el piso de las registradas');
       return;
+    }
+
+    const payload = [];
+    for (const row of [...newItems, ...dirtyExisting]) {
+      const parsed = parseBulkFloor(row.floor);
+      if (!parsed.ok) {
+        setError(`Piso inválido en la unidad ${row.number || 'sin número'}`);
+        return;
+      }
+      payload.push({ row, floor: parsed.value });
     }
 
     setSavingBulk(true);
     try {
-      const data = await adminApi.units.bulkCreate({
-        towerId: bulkTowerId || null,
-        units: items.map(({ number, floor, type, adminStatus }) => ({
-          number,
-          floor,
-          type,
-          adminStatus,
-        })),
-      });
+      let updated = 0;
+      let created = 0;
 
-      const failed = data.errors?.length || 0;
+      for (const { row, floor } of payload.filter(({ row }) => row.existing)) {
+        await adminApi.units.update(row.unitId, { floor: floor ?? null });
+        updated += 1;
+      }
+
+      const toCreate = payload.filter(({ row }) => !row.existing);
+      if (toCreate.length) {
+        const data = await adminApi.units.bulkCreate({
+          towerId: bulkTowerId || null,
+          units: toCreate.map(({ row, floor }) => ({
+            number: row.number.trim(),
+            floor,
+            type: row.type,
+            adminStatus: row.adminStatus,
+          })),
+        });
+
+        created = data.created || 0;
+        const failed = data.errors?.length || 0;
+        if (failed) {
+          setSuccess(
+            `${created} unidad(es) nueva(s) creada(s). ${updated} piso(s) actualizado(s). ${failed} no se pudieron guardar.`
+          );
+          await load();
+          return;
+        }
+      }
+
       setSuccess(
-        failed
-          ? `${data.created} unidad(es) nueva(s) creada(s). ${failed} no se pudieron guardar.`
-          : `${data.created} unidad(es) nueva(s) creada(s) correctamente.`
+        created && updated
+          ? `${created} unidad(es) nueva(s) creada(s) y ${updated} piso(s) actualizado(s).`
+          : created
+            ? `${created} unidad(es) nueva(s) creada(s) correctamente.`
+            : `${updated} piso(s) actualizado(s) correctamente.`
       );
       await load();
     } catch (err) {
@@ -184,8 +240,8 @@ export default function TowersPage() {
       const data = await adminApi.units.syncFloors({ towerId: bulkTowerId });
       setSuccess(
         data.updated
-          ? `${data.updated} piso(s) actualizado(s) según el número del apartamento.`
-          : 'Los pisos ya coinciden con los números de apartamento.'
+          ? `${data.updated} unidad(es) sin piso completada(s) según el número del apartamento.`
+          : 'Todas las unidades registradas ya tienen piso asignado.'
       );
       await load();
     } catch (err) {
@@ -286,10 +342,6 @@ export default function TowersPage() {
         skipExisting: true,
       });
 
-      for (const towerId of targetIds) {
-        await adminApi.units.syncFloors({ towerId });
-      }
-
       setReplicateModal({
         status: 'success',
         data,
@@ -307,6 +359,7 @@ export default function TowersPage() {
   const selectedBulkTower = towers.find((t) => t._id === bulkTowerId);
   const existingBulkCount = bulkRows.filter((row) => row.existing).length;
   const newBulkCount = bulkRows.filter((row) => !row.existing && row.number.trim()).length;
+  const dirtyBulkCount = bulkRows.filter((row) => row.existing && row.dirty).length;
 
   const sourceUnits = useMemo(
     () => getUnitsForTower(replicateSourceId, units),
@@ -398,7 +451,8 @@ export default function TowersPage() {
           <>
             <p className="admin-empty" style={{ marginTop: 0 }}>
               Selecciona una torre para ver las unidades ya registradas y agregar nuevas filas al final.
-              Las unidades existentes aparecen en gris; solo se crean las filas nuevas.
+              Las unidades existentes aparecen en gris; puedes corregir su piso y guardar. Solo se crean
+              las filas nuevas con número.
             </p>
             <form onSubmit={saveBulkUnits}>
               <div className="admin-form" style={{ marginTop: '1rem' }}>
@@ -465,12 +519,12 @@ export default function TowersPage() {
                           </td>
                           <td>
                             <input
-                              className="admin-table-input admin-table-input--sm"
-                              type="number"
+                              className="admin-table-input admin-table-input--sm admin-table-input--editable"
+                              type="text"
+                              inputMode="numeric"
                               value={row.floor}
                               onChange={(e) => updateBulkRow(row.key, 'floor', e.target.value)}
                               placeholder="—"
-                              readOnly={row.existing}
                             />
                           </td>
                           <td>
@@ -499,9 +553,11 @@ export default function TowersPage() {
                           </td>
                           <td>
                             <span
-                              className={`admin-badge admin-badge--${row.existing ? 'paid' : 'pending'}`}
+                              className={`admin-badge admin-badge--${
+                                row.existing ? (row.dirty ? 'pending' : 'paid') : 'pending'
+                              }`}
                             >
-                              {row.existing ? 'Registrada' : 'Nueva'}
+                              {row.existing ? (row.dirty ? 'Modificada' : 'Registrada') : 'Nueva'}
                             </span>
                           </td>
                           <td className="admin-actions">
@@ -534,13 +590,26 @@ export default function TowersPage() {
                     onClick={syncTowerFloors}
                     disabled={syncingFloors}
                   >
-                    {syncingFloors ? 'Recalculando…' : 'Recalcular pisos desde número'}
+                    {syncingFloors ? 'Completando…' : 'Completar pisos vacíos desde número'}
                   </button>
                 )}
-                <button type="submit" className="admin-btn" disabled={savingBulk || !newBulkCount}>
+                <button
+                  type="submit"
+                  className="admin-btn"
+                  disabled={savingBulk || (!newBulkCount && !dirtyBulkCount)}
+                >
                   {savingBulk
                     ? 'Guardando…'
-                    : `Guardar unidades nuevas${newBulkCount ? ` (${newBulkCount})` : ''}`}
+                    : `Guardar cambios${
+                        newBulkCount || dirtyBulkCount
+                          ? ` (${[
+                              newBulkCount ? `${newBulkCount} nueva(s)` : '',
+                              dirtyBulkCount ? `${dirtyBulkCount} piso(s)` : '',
+                            ]
+                              .filter(Boolean)
+                              .join(', ')})`
+                          : ''
+                      }`}
                 </button>
               </div>
             </form>
