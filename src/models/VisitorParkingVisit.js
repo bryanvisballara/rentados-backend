@@ -22,7 +22,6 @@ const visitorParkingVisitSchema = new mongoose.Schema(
     residentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Resident',
-      required: true,
     },
     unitId: {
       type: mongoose.Schema.Types.ObjectId,

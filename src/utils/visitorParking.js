@@ -1,4 +1,4 @@
-const { VisitorParking, VisitorParkingVisit, Resident } = require('../models');
+const { VisitorParking, VisitorParkingVisit, Resident, Unit } = require('../models');
 const { notifyUnitResidents } = require('./porteriaNotify');
 
 function normalizePlate(plate) {
@@ -55,6 +55,46 @@ async function getParkingSummary(buildingId) {
   };
 }
 
+async function resolveVisitTarget(input, organization, building) {
+  if (input.unitId) {
+    const unit = await Unit.findOne({
+      _id: input.unitId,
+      organizationId: organization._id,
+      buildingId: building._id,
+      isActive: true,
+    });
+
+    if (!unit) throw new Error('Unidad no encontrada');
+
+    const resident = await Resident.findOne({
+      unitId: unit._id,
+      organizationId: organization._id,
+    })
+      .sort({ isPrimary: -1, createdAt: 1 })
+      .populate('userId', 'firstName lastName');
+
+    return { unit, resident };
+  }
+
+  if (input.residentId) {
+    const resident = await Resident.findOne({
+      _id: input.residentId,
+      organizationId: organization._id,
+    })
+      .populate('userId', 'firstName lastName')
+      .populate('unitId', 'number tower buildingId');
+
+    if (!resident) throw new Error('Residente no encontrado');
+    if (resident.unitId?.buildingId?.toString() !== building._id.toString()) {
+      throw new Error('El residente no pertenece a este conjunto');
+    }
+
+    return { unit: resident.unitId, resident };
+  }
+
+  throw new Error('Selecciona la unidad destino');
+}
+
 async function registerVisitorEntry(input, context) {
   const { organization, building, userId } = context;
   if (!building) throw new Error('No hay conjunto configurado');
@@ -69,17 +109,7 @@ async function registerVisitorEntry(input, context) {
   });
   if (existing) throw new Error('Ya hay un visitante activo con esa placa');
 
-  const resident = await Resident.findOne({
-    _id: input.residentId,
-    organizationId: organization._id,
-  })
-    .populate('userId', 'firstName lastName')
-    .populate('unitId', 'number tower buildingId');
-
-  if (!resident) throw new Error('Residente no encontrado');
-  if (resident.unitId?.buildingId?.toString() !== building._id.toString()) {
-    throw new Error('El residente no pertenece a este conjunto');
-  }
+  const { unit, resident } = await resolveVisitTarget(input, organization, building);
 
   let spot;
   if (input.spotId) {
@@ -99,14 +129,14 @@ async function registerVisitorEntry(input, context) {
     if (!spot) throw new Error('No hay puestos de visitantes disponibles');
   }
 
-  const tower = input.tower?.trim() || resident.unitId?.tower || undefined;
+  const tower = input.tower?.trim() || unit.tower || undefined;
 
   const visit = await VisitorParkingVisit.create({
     organizationId: organization._id,
     buildingId: building._id,
     spotId: spot._id,
-    residentId: resident._id,
-    unitId: resident.unitId._id,
+    residentId: resident?._id,
+    unitId: unit._id,
     tower,
     licensePlate,
     visitorName: input.visitorName?.trim() || undefined,
@@ -118,15 +148,15 @@ async function registerVisitorEntry(input, context) {
   spot.isOccupied = true;
   await spot.save();
 
+  const unitLabel = unit.number ? `unidad ${unit.number}` : 'tu unidad';
   const body = `Visitante con placa ${licensePlate}${tower ? ` · Torre ${tower}` : ''}. Puesto ${spot.spotNumber}.`;
 
-  await notifyUnitResidents({
+  const notifications = await notifyUnitResidents({
     organization,
-    unitId: resident.unitId._id,
-    residentId: resident._id,
+    unitId: unit._id,
     type: 'visitor_parking',
     title: 'Visitante en parqueadero',
-    body,
+    body: resident ? body : `${body} (${unitLabel})`,
     visitorVisitId: visit._id,
   });
 
@@ -136,7 +166,7 @@ async function registerVisitorEntry(input, context) {
     .populate('unitId', 'number tower')
     .populate('registeredBy', 'firstName lastName');
 
-  return formatVisit(populated);
+  return { ...formatVisit(populated), notified: notifications.length > 0 };
 }
 
 async function registerVisitorExit(input, context) {

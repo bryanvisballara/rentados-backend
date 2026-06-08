@@ -70,7 +70,11 @@ router.get('/units', async (req, res) => {
     const { organization, building } = await getOrgContext(req.user, req);
     if (!organization || !building) return res.json({ units: [] });
 
-    const units = await Unit.find({ buildingId: building._id, isActive: true }).sort({ number: 1 });
+    const units = await Unit.find({
+      buildingId: building._id,
+      isActive: true,
+      type: { $in: ['apartment', 'house', 'commercial'] },
+    }).sort({ tower: 1, number: 1 });
     const packageCounts = await LockerPackage.aggregate([
       {
         $match: {

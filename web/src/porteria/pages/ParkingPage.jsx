@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { porteriaApi } from '../../api/client';
-import ResidentSelectField from '../../admin/components/ResidentSelectField';
+import UnitSelectField from '../components/UnitSelectField';
 import '../../admin/admin.css';
 
 const emptyEntry = {
-  residentId: '',
+  unitId: '',
   licensePlate: '',
   tower: '',
   visitorName: '',
@@ -13,7 +13,7 @@ const emptyEntry = {
 
 export default function ParkingPage() {
   const [summary, setSummary] = useState(null);
-  const [residents, setResidents] = useState([]);
+  const [units, setUnits] = useState([]);
   const [towers, setTowers] = useState([]);
   const [form, setForm] = useState(emptyEntry);
   const [exitPlate, setExitPlate] = useState('');
@@ -22,13 +22,13 @@ export default function ParkingPage() {
   const [saving, setSaving] = useState(false);
 
   async function load() {
-    const [summaryData, residentsData, towersData] = await Promise.all([
+    const [summaryData, unitsData, towersData] = await Promise.all([
       porteriaApi.parking.summary(),
-      porteriaApi.residents(),
+      porteriaApi.units(),
       porteriaApi.towers(),
     ]);
     setSummary(summaryData);
-    setResidents(residentsData.residents || []);
+    setUnits(unitsData.units || []);
     setTowers(towersData.towers || []);
   }
 
@@ -36,20 +36,33 @@ export default function ParkingPage() {
     load().catch((err) => setError(err.message));
   }, []);
 
+  function handleUnitChange(unitId) {
+    const unit = units.find((item) => item._id === unitId);
+    setForm((prev) => ({
+      ...prev,
+      unitId,
+      tower: unit?.tower || prev.tower,
+    }));
+  }
+
   async function handleEntry(e) {
     e.preventDefault();
     setSaving(true);
     setError('');
     setSuccess('');
     try {
-      await porteriaApi.parking.registerEntry({
-        residentId: form.residentId,
+      const result = await porteriaApi.parking.registerEntry({
+        unitId: form.unitId,
         licensePlate: form.licensePlate,
         tower: form.tower || undefined,
         visitorName: form.visitorName || undefined,
         spotId: form.spotId || undefined,
       });
-      setSuccess('Visitante registrado. Residente notificado.');
+      setSuccess(
+        result.visit?.notified === false
+          ? 'Ingreso registrado. La unidad no tiene residentes en la app para notificar.'
+          : 'Visitante registrado. Unidad notificada.'
+      );
       setForm(emptyEntry);
       await load();
     } catch (err) {
@@ -82,7 +95,7 @@ export default function ParkingPage() {
     <div className="porteria-page">
       <header className="porteria-page__header">
         <h1>Parqueadero visitantes</h1>
-        <p>Registra ingreso con placa y torre. Al salir, busca la placa y libera el puesto.</p>
+        <p>Registra ingreso por unidad destino. Al salir, busca la placa y libera el puesto.</p>
       </header>
 
       {error && <div className="admin-error porteria-page__alert">{error}</div>}
@@ -107,12 +120,13 @@ export default function ParkingPage() {
         <h2>Registrar ingreso</h2>
         <form className="admin-form" onSubmit={handleEntry}>
           <label className="admin-unit-picker-field" style={{ gridColumn: '1 / -1' }}>
-            Residente que recibe la visita
-            <ResidentSelectField
-              residents={residents}
-              value={form.residentId}
-              onChange={(residentId) => setForm({ ...form, residentId })}
+            Unidad destino
+            <UnitSelectField
+              units={units}
+              value={form.unitId}
+              onChange={handleUnitChange}
               required
+              placeholder="Seleccionar unidad"
             />
           </label>
           <label>
