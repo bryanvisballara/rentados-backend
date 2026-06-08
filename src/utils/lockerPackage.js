@@ -1,4 +1,4 @@
-const { LockerPackage, Resident, ResidentNotification, Unit } = require('../models');
+const { LockerPackage, Resident, ResidentNotification, Unit, VisitorParkingVisit } = require('../models');
 const { getLockerSettings } = require('./lockerSettings');
 const { notifyUnitResidents } = require('./porteriaNotify');
 
