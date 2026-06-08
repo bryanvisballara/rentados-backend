@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { formatUnitLabel, matchUnitQuery } from '../../utils/units';
 
 export default function UnitSelectField({
   units,
@@ -10,15 +11,17 @@ export default function UnitSelectField({
   const [query, setQuery] = useState('');
 
   const filteredUnits = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return units;
-
-    return units.filter((unit) => {
-      const number = String(unit.number || '').toLowerCase();
-      const tower = String(unit.tower || '').toLowerCase();
-      return number.includes(q) || tower.includes(q);
-    });
+    if (!query.trim()) return units;
+    return units.filter((unit) => matchUnitQuery(unit, query));
   }, [units, query]);
+
+  const sortedUnits = useMemo(
+    () =>
+      [...filteredUnits].sort((a, b) =>
+        String(a.number).localeCompare(String(b.number), 'es', { numeric: true })
+      ),
+    [filteredUnits]
+  );
 
   return (
     <div className="admin-unit-picker">
@@ -26,29 +29,31 @@ export default function UnitSelectField({
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar por número o torre"
+        placeholder="Buscar por número, piso+apto o torre (ej: 41201)"
         aria-label="Buscar unidad"
         className="admin-unit-picker__search"
       />
       <p className="admin-unit-picker__meta">
-        {filteredUnits.length} de {units.length} unidad(es)
+        {sortedUnits.length} de {units.length} unidad(es)
       </p>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
-        size={Math.min(Math.max(filteredUnits.length + 1, 4), 8)}
+        size={Math.min(Math.max(sortedUnits.length + 1, 4), 8)}
         className="admin-unit-picker__list"
       >
         <option value="">{placeholder}</option>
-        {filteredUnits.map((unit) => (
+        {sortedUnits.map((unit) => (
           <option key={unit._id} value={unit._id}>
-            Apto {unit.number}
-            {unit.tower ? ` · Torre ${unit.tower}` : ''}
+            {formatUnitLabel(unit)}
             {unit.pendingPackages ? ` · ${unit.pendingPackages} paq.` : ''}
           </option>
         ))}
       </select>
+      {sortedUnits.length === 0 && (
+        <p className="admin-unit-picker__empty">No hay unidades con ese filtro.</p>
+      )}
     </div>
   );
 }

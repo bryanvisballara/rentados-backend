@@ -74,7 +74,9 @@ router.get('/units', async (req, res) => {
       buildingId: building._id,
       isActive: true,
       type: { $in: ['apartment', 'house', 'commercial'] },
-    }).sort({ tower: 1, number: 1 });
+    })
+      .populate('towerId', 'name code')
+      .sort({ tower: 1, number: 1 });
     const packageCounts = await LockerPackage.aggregate([
       {
         $match: {
@@ -92,7 +94,9 @@ router.get('/units', async (req, res) => {
       units: units.map((u) => ({
         _id: u._id,
         number: u.number,
-        tower: u.tower,
+        floor: u.floor,
+        tower: u.towerId?.name || u.tower,
+        towerId: u.towerId?._id || u.towerId,
         adminStatus: u.adminStatus,
         pendingPackages: countMap[u._id.toString()] || 0,
       })),
