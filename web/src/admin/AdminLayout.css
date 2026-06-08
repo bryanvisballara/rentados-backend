@@ -90,7 +90,9 @@
 
 .admin-main {
   flex: 1;
-  padding: 2rem;
+  min-width: 0;
+  width: 100%;
+  padding: clamp(1.25rem, 2.5vw, 2rem);
   overflow: auto;
 }
 

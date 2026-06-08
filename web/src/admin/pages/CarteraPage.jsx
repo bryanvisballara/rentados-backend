@@ -9,7 +9,7 @@ export default function CarteraPage() {
 
   useEffect(() => {
     adminApi
-      .cartera(period)
+      .cartera({ period })
       .then(setData)
       .catch((err) => setError(err.message));
   }, [period]);

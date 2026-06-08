@@ -733,7 +733,7 @@ export default function TowersPage() {
               <input
                 type="number"
                 min="0"
-                step="1000"
+                step="1"
                 value={unitForm.administrationFee}
                 onChange={(e) => setUnitForm({ ...unitForm, administrationFee: e.target.value })}
                 placeholder="Vacío = valor por defecto del conjunto"

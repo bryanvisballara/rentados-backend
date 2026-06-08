@@ -1,5 +1,6 @@
 .admin-page {
-  max-width: 1100px;
+  width: 100%;
+  max-width: none;
 }
 
 .admin-page__header {
@@ -49,6 +50,39 @@
   color: var(--color-green);
 }
 
+.admin-stat--link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-stat--link:hover {
+  border-color: var(--color-green);
+  box-shadow: 0 0 0 1px var(--color-green);
+}
+
+.admin-stat--link:focus-visible {
+  outline: 2px solid var(--color-green);
+  outline-offset: 2px;
+}
+
+.admin-breadcrumb {
+  margin: 0 0 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.admin-breadcrumb a {
+  color: var(--color-green);
+  text-decoration: none;
+}
+
+.admin-breadcrumb a:hover {
+  text-decoration: underline;
+}
+
 .admin-card {
   padding: 1.25rem;
   border-radius: var(--radius-lg);
@@ -91,6 +125,26 @@
 .admin-form textarea {
   min-height: 90px;
   grid-column: 1 / -1;
+}
+
+.admin-media-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-media-preview__media {
+  max-width: 280px;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.admin-media-preview__name {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
 }
 
 .admin-btn {
@@ -163,6 +217,11 @@
   color: #8a6116;
 }
 
+.admin-badge--partial {
+  background: #eef4ff;
+  color: #1e3a5f;
+}
+
 .admin-badge--overdue,
 .admin-badge--closed {
   background: #fde2e2;
@@ -174,6 +233,15 @@
   border-radius: var(--radius-md);
   background: #fde2e2;
   color: #8b3a3a;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+
+.admin-success {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  background: #e8f5ee;
+  color: #1e5a3d;
   margin-bottom: 1rem;
   font-size: 0.875rem;
 }
@@ -284,6 +352,77 @@
   color: var(--color-text);
 }
 
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.admin-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.admin-toolbar select {
+  min-width: 220px;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  background: var(--color-white);
+}
+
+.admin-booking-blocks {
+  display: grid;
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+}
+
+.admin-booking-block-row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  align-items: end;
+}
+
+.admin-time-select {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.admin-time-select select {
+  padding: 0.65rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  background: var(--color-white);
+}
+
+.admin-field-hint {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.admin-hours-preview {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  background: #eef4ff;
+  border: 1px solid #c9daf8;
+  color: #1e3a5f;
+  font-size: 0.8125rem;
+}
+
 .admin-modal-overlay {
   position: fixed;
   inset: 0;
@@ -302,6 +441,19 @@
   background: var(--color-white);
   border: 1px solid var(--color-border);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+}
+
+.admin-modal--wide {
+  width: min(100%, 36rem);
+}
+
+.admin-unit-picker__search {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  background: var(--color-white);
 }
 
 .admin-modal h3 {

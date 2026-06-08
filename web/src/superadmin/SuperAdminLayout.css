@@ -67,7 +67,9 @@
 }
 
 .superadmin-main {
-  padding: 1.5rem;
+  min-width: 0;
+  width: 100%;
+  padding: clamp(1.25rem, 2.5vw, 1.5rem);
 }
 
 @media (max-width: 900px) {

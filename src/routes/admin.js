@@ -5,6 +5,7 @@ const {
   Tower,
   Unit,
   Facility,
+  FacilityBooking,
   Publication,
   User,
   Resident,
@@ -15,9 +16,22 @@ const {
 } = require('../models');
 const { authenticate, requireAdmin, getOrganizationFilter } = require('../middleware/auth');
 const { getBillingSettings, enrichPayment, parseAdministrationFee } = require('../utils/billing');
+const { getLockerSettings } = require('../utils/lockerSettings');
 const { syncAutoSuspensions } = require('../utils/autoSuspension');
+const { registerPayment } = require('../utils/registerPayment');
 const { getOrgContext, getScopedOrgFilter } = require('../utils/tenantContext');
 const { parseUnitFloor, inferFloorFromUnitNumber } = require('../utils/unitFloor');
+const { uploadPublicationMedia } = require('../middleware/uploadPublication');
+const { uploadPublicationFile, deletePublicationMedia } = require('../utils/publicationMedia');
+const mongoose = require('mongoose');
+const { normalizeOpenHours } = require('../utils/openHours');
+const {
+  resolveBookingWindow,
+  assertBookingAvailable,
+  formatBookingEvent,
+  getBookingPricing,
+  ACTIVE_STATUSES,
+} = require('../utils/facilityBooking');
 
 const router = express.Router();
 
@@ -554,13 +568,19 @@ router.get('/units/:id/residents', async (req, res) => {
 });
 
 // —— Servicios / áreas comunes ——
+function formatFacility(facility) {
+  const doc = facility?.toObject ? facility.toObject() : facility;
+  if (!doc) return doc;
+  return { ...doc, openHours: normalizeOpenHours(doc.openHours) };
+}
+
 router.get('/facilities', async (req, res) => {
   try {
     const { building } = await getOrgContext(req.user, req);
     if (!building) return res.json({ facilities: [] });
 
     const facilities = await Facility.find({ buildingId: building._id }).sort({ name: 1 });
-    res.json({ facilities });
+    res.json({ facilities: facilities.map(formatFacility) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -587,17 +607,23 @@ router.post('/facilities', async (req, res) => {
       icon: req.body.icon,
       capacity: req.body.capacity,
       requiresApproval: req.body.requiresApproval,
-      openHours: req.body.openHours,
-      seasonOpenDate: req.body.seasonOpenDate,
-      seasonCloseDate: req.body.seasonCloseDate,
+      open24Hours: req.body.open24Hours ?? false,
+      openHours: req.body.open24Hours
+        ? { start: '00:00', end: '00:00' }
+        : normalizeOpenHours(req.body.openHours),
+      seasonOpenDate: req.body.open24Hours ? undefined : req.body.seasonOpenDate,
+      seasonCloseDate: req.body.open24Hours ? undefined : req.body.seasonCloseDate,
       status: req.body.status || 'open',
       price: req.body.price ?? 0,
       currency: req.body.currency,
       pricingType: req.body.pricingType || 'free',
       blockWhenOverdue: req.body.blockWhenOverdue ?? true,
+      bookable: req.body.bookable ?? false,
+      bookingPricing: req.body.bookingPricing,
+      bookingRules: req.body.bookingRules,
     });
 
-    res.status(201).json({ facility });
+    res.status(201).json({ facility: formatFacility(facility) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -605,12 +631,20 @@ router.post('/facilities', async (req, res) => {
 
 router.patch('/facilities/:id', async (req, res) => {
   try {
+    const { building } = await getOrgContext(req.user, req);
+    const facility = await Facility.findOne({
+      _id: req.params.id,
+      ...(building ? { buildingId: building._id } : getOrganizationFilter(req.user)),
+    });
+    if (!facility) return res.status(404).json({ error: 'Servicio no encontrado' });
+
     const allowed = [
       'name',
       'description',
       'icon',
       'capacity',
       'requiresApproval',
+      'open24Hours',
       'openHours',
       'seasonOpenDate',
       'seasonCloseDate',
@@ -620,13 +654,206 @@ router.patch('/facilities/:id', async (req, res) => {
       'pricingType',
       'blockWhenOverdue',
       'isActive',
+      'bookable',
+      'bookingPricing',
+      'bookingRules',
     ];
     const updates = Object.fromEntries(
       Object.entries(req.body).filter(([key]) => allowed.includes(key))
     );
-    const facility = await Facility.findByIdAndUpdate(req.params.id, updates, { new: true });
+
+    if (updates.name && updates.name !== facility.name) {
+      updates.slug = updates.name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+    }
+
+    if (updates.open24Hours) {
+      updates.openHours = { start: '00:00', end: '00:00' };
+      updates.seasonOpenDate = undefined;
+      updates.seasonCloseDate = undefined;
+    } else if (updates.openHours) {
+      updates.openHours = normalizeOpenHours(updates.openHours);
+    }
+
+    Object.assign(facility, updates);
+    await facility.save();
+    res.json({ facility: formatFacility(facility) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/facilities/:id', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    const facility = await Facility.findOne({
+      _id: req.params.id,
+      ...(building ? { buildingId: building._id } : getOrganizationFilter(req.user)),
+    });
     if (!facility) return res.status(404).json({ error: 'Servicio no encontrado' });
-    res.json({ facility });
+
+    const inSuspensions = await ServiceSuspension.countDocuments({
+      facilityIds: facility._id,
+      isActive: true,
+    });
+    if (inSuspensions > 0) {
+      return res.status(400).json({
+        error: 'No se puede eliminar: hay suspensiones activas vinculadas a este servicio',
+      });
+    }
+
+    await facility.deleteOne();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/facility-bookings', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    if (!building) return res.json({ bookings: [], facilities: [] });
+
+    const { from, to, facilityId } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ error: 'Indica from y to (ISO date)' });
+    }
+
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    const filter = {
+      buildingId: building._id,
+      status: { $in: ACTIVE_STATUSES },
+      startAt: { $lt: toDate },
+      endAt: { $gt: fromDate },
+    };
+    if (facilityId && mongoose.Types.ObjectId.isValid(facilityId)) {
+      filter.facilityId = facilityId;
+    }
+
+    const [bookings, facilities] = await Promise.all([
+      FacilityBooking.find(filter)
+        .populate({ path: 'residentId', populate: { path: 'userId', select: 'firstName lastName' } })
+        .populate('unitId', 'number type')
+        .populate('facilityId', 'name slug openHours bookingRules bookingPricing bookable')
+        .sort({ startAt: 1 }),
+      Facility.find({ buildingId: building._id, bookable: true, isActive: true }).sort({ name: 1 }),
+    ]);
+
+    res.json({
+      facilities: facilities.map(formatFacility),
+      bookings: bookings.map((b) => formatBookingEvent(b, { showResidentDetails: true })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/facility-bookings', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
+
+    const { facilityId, residentId, startAt, endAt, blockIndex, notes } = req.body;
+    const facility = await Facility.findOne({ _id: facilityId, buildingId: building._id, bookable: true });
+    if (!facility) return res.status(404).json({ error: 'Servicio reservable no encontrado' });
+    if (facility.status !== 'open') {
+      return res.status(400).json({ error: 'El servicio no está disponible para reservas' });
+    }
+
+    const resident = await Resident.findOne({ _id: residentId, organizationId: building.organizationId }).populate(
+      'unitId',
+      'number buildingId adminStatus'
+    );
+    if (!resident) return res.status(404).json({ error: 'Residente no encontrado' });
+
+    const { start, end, durationMinutes, priceInfo } = resolveBookingWindow(
+      facility,
+      startAt,
+      endAt,
+      blockIndex
+    );
+    await assertBookingAvailable(facility._id, start, end);
+
+    const booking = await FacilityBooking.create({
+      organizationId: building.organizationId,
+      buildingId: building._id,
+      facilityId: facility._id,
+      residentId: resident._id,
+      unitId: resident.unitId._id,
+      createdByUserId: req.user._id,
+      startAt: start,
+      endAt: end,
+      durationMinutes,
+      totalPrice: priceInfo.totalPrice,
+      currency: facility.currency || 'COP',
+      pricingMode: priceInfo.pricingMode,
+      pricingLabel: priceInfo.blockLabel,
+      notes,
+      status: facility.requiresApproval ? 'pending' : 'confirmed',
+    });
+
+    await booking.populate([
+      { path: 'residentId', populate: { path: 'userId', select: 'firstName lastName' } },
+      { path: 'unitId', select: 'number type' },
+      { path: 'facilityId', select: 'name slug' },
+    ]);
+
+    res.status(201).json({ booking: formatBookingEvent(booking, { showResidentDetails: true }) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/facility-bookings/:id', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    const booking = await FacilityBooking.findOne({
+      _id: req.params.id,
+      ...(building ? { buildingId: building._id } : getOrganizationFilter(req.user)),
+    });
+    if (!booking) return res.status(404).json({ error: 'Reserva no encontrada' });
+
+    if (req.body.status === 'confirmed') booking.status = 'confirmed';
+    if (req.body.status === 'cancelled') {
+      booking.status = 'cancelled';
+      booking.cancelledAt = new Date();
+      booking.cancelReason = req.body.cancelReason || 'Cancelada por administración';
+    }
+    if (req.body.notes != null) booking.notes = req.body.notes;
+
+    await booking.save();
+    await booking.populate([
+      { path: 'residentId', populate: { path: 'userId', select: 'firstName lastName' } },
+      { path: 'unitId', select: 'number type' },
+      { path: 'facilityId', select: 'name slug' },
+    ]);
+
+    res.json({ booking: formatBookingEvent(booking, { showResidentDetails: true }) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/facility-bookings/:id', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    const booking = await FacilityBooking.findOne({
+      _id: req.params.id,
+      ...(building ? { buildingId: building._id } : getOrganizationFilter(req.user)),
+    });
+    if (!booking) return res.status(404).json({ error: 'Reserva no encontrada' });
+
+    booking.status = 'cancelled';
+    booking.cancelledAt = new Date();
+    booking.cancelReason = 'Eliminada por administración';
+    await booking.save();
+
+    res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -676,6 +903,36 @@ router.get('/publications', async (req, res) => {
   }
 });
 
+router.post('/publications/upload-media', (req, res) => {
+  uploadPublicationMedia.single('file')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message =
+        uploadErr.code === 'LIMIT_FILE_SIZE'
+          ? 'El archivo supera el límite de 50 MB.'
+          : uploadErr.message;
+      res.status(400).json({ error: message });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ error: 'Selecciona un archivo de imagen o video.' });
+      return;
+    }
+
+    try {
+      const orgId = req.user.organizationId?.toString();
+      const media = await uploadPublicationFile(
+        req.file.buffer,
+        req.file.mimetype,
+        orgId
+      );
+      res.status(201).json({ media });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+});
+
 router.post('/publications', async (req, res) => {
   try {
     const { building } = await getOrgContext(req.user, req);
@@ -699,7 +956,20 @@ router.post('/publications', async (req, res) => {
 
 router.delete('/publications/:id', async (req, res) => {
   try {
-    await Publication.findByIdAndDelete(req.params.id);
+    const orgFilter = getOrganizationFilter(req.user);
+    const publication = await Publication.findOne({ _id: req.params.id, ...orgFilter });
+    if (!publication) {
+      res.status(404).json({ error: 'Publicación no encontrada' });
+      return;
+    }
+
+    try {
+      await deletePublicationMedia(publication.media);
+    } catch (cloudErr) {
+      console.warn('No se pudo eliminar media en Cloudinary:', cloudErr.message);
+    }
+
+    await publication.deleteOne();
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -784,6 +1054,42 @@ router.delete('/staff/:id', async (req, res) => {
     });
     if (!staff) return res.status(404).json({ error: 'Usuario de portería no encontrado' });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/porteria-settings', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user, req);
+    if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
+
+    res.json({
+      locker: getLockerSettings(organization),
+      organizationId: organization._id,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/porteria-settings', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user, req);
+    if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
+
+    const current = getLockerSettings(organization);
+    const locker = {
+      ...current,
+      ...req.body,
+    };
+
+    organization.settings = organization.settings || {};
+    organization.settings.locker = locker;
+    organization.markModified('settings.locker');
+    await organization.save();
+
+    res.json({ locker: getLockerSettings(organization) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -1012,24 +1318,134 @@ router.post('/service-suspensions/sync-auto', async (req, res) => {
   }
 });
 
+router.post('/payments', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user, req);
+    const result = await registerPayment(req.body, {
+      organization,
+      userId: req.user._id,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.get('/cartera', async (req, res) => {
   try {
     const orgFilter = getOrganizationFilter(req.user);
-    const period = req.query.period;
+    const { view, period: periodQuery } = req.query;
     const { organization } = await getOrgContext(req.user, req);
     const billingSettings = getBillingSettings(organization);
 
+    const now = new Date();
+    const currentPeriod =
+      periodQuery || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const populateOpts = { path: 'unitId', select: 'number type tower adminStatus' };
+    const sum = (items, pick) => items.reduce((acc, p) => acc + pick(p), 0);
+
+    if (view) {
+      let filter = { ...orgFilter };
+      let payments = [];
+
+      switch (view) {
+        case 'cartera-actual':
+          filter.status = { $in: ['pending', 'overdue'] };
+          payments = await Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 });
+          break;
+        case 'recaudo':
+          filter = { ...orgFilter, period: currentPeriod, status: 'paid' };
+          payments = await Payment.find(filter).populate(populateOpts).sort({ paidAt: -1, dueDate: -1 });
+          break;
+        case 'morosidad':
+          filter = { ...orgFilter, status: 'overdue' };
+          payments = await Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 });
+          break;
+        case 'pendiente':
+          filter = { ...orgFilter, period: currentPeriod, status: 'pending' };
+          payments = await Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 });
+          break;
+        case 'facturado':
+          filter = { ...orgFilter, period: currentPeriod };
+          payments = await Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 });
+          break;
+        case 'tasa-recaudo':
+          filter = { ...orgFilter, period: currentPeriod };
+          payments = await Payment.find(filter).populate(populateOpts).sort({ status: 1, dueDate: -1 });
+          break;
+        default:
+          return res.status(400).json({ error: 'Vista de cartera no válida' });
+      }
+
+      const enriched = payments.map((p) => enrichPayment(p, billingSettings));
+
+      let detailTotal = 0;
+      if (view === 'cartera-actual' || view === 'morosidad' || view === 'pendiente') {
+        detailTotal = sum(enriched, (p) => p.amount - (p.paidAmount || 0));
+      } else if (view === 'recaudo') {
+        detailTotal = sum(enriched, (p) => p.paidAmount || p.amount);
+      } else if (view === 'facturado') {
+        detailTotal = sum(enriched, (p) => p.amount);
+      } else if (view === 'tasa-recaudo') {
+        const facturadoMes = sum(enriched, (p) => p.amount);
+        const recaudoMes = sum(
+          enriched.filter((p) => p.status === 'paid'),
+          (p) => p.paidAmount || p.amount
+        );
+        const pendienteMes = sum(
+          enriched.filter((p) => p.status === 'pending'),
+          (p) => p.amount - (p.paidAmount || 0)
+        );
+        const morosidadMes = sum(
+          enriched.filter((p) => p.status === 'overdue'),
+          (p) => p.amount - (p.paidAmount || 0)
+        );
+        const tasaRecaudo = facturadoMes > 0 ? Math.round((recaudoMes / facturadoMes) * 100) : 0;
+
+        return res.json({
+          view,
+          period: currentPeriod,
+          billingSettings,
+          breakdown: {
+            facturadoMes,
+            recaudoMes,
+            pendienteMes,
+            morosidadMes,
+            tasaRecaudo,
+          },
+          summary: {
+            total: enriched.length,
+            paid: enriched.filter((p) => p.status === 'paid').length,
+            pending: enriched.filter((p) => p.status === 'pending').length,
+            overdue: enriched.filter((p) => p.status === 'overdue').length,
+          },
+          payments: enriched,
+        });
+      }
+
+      return res.json({
+        view,
+        period: ['recaudo', 'pendiente', 'facturado'].includes(view) ? currentPeriod : null,
+        billingSettings,
+        detailTotal,
+        summary: {
+          total: enriched.length,
+          totalInterest: enriched.reduce((acc, p) => acc + (p.interestAmount || 0), 0),
+          totalDue: enriched.reduce((acc, p) => acc + (p.totalDue || 0), 0),
+        },
+        payments: enriched,
+      });
+    }
+
     const filter = { ...orgFilter };
-    if (period) filter.period = period;
+    if (periodQuery) filter.period = periodQuery;
 
     const [paid, pending, overdue, rawPayments] = await Promise.all([
       Payment.countDocuments({ ...filter, status: 'paid' }),
       Payment.countDocuments({ ...filter, status: 'pending' }),
       Payment.countDocuments({ ...filter, status: 'overdue' }),
-      Payment.find(filter)
-        .populate('unitId', 'number type tower adminStatus')
-        .sort({ dueDate: -1 })
-        .limit(100),
+      Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 }).limit(100),
     ]);
 
     const payments = rawPayments.map((p) => enrichPayment(p, billingSettings));
@@ -1111,11 +1527,18 @@ router.get('/residents/:id', async (req, res) => {
 
     if (!resident) return res.status(404).json({ error: 'Residente no encontrado' });
 
-    const payments = await Payment.find({ unitId: resident.unitId })
-      .sort({ dueDate: -1 })
-      .limit(12);
+    const { organization } = await getOrgContext(req.user, req);
+    const billingSettings = getBillingSettings(organization);
 
-    res.json({ resident, payments });
+    const payments = await Payment.find({ unitId: resident.unitId })
+      .populate('facilityId', 'name')
+      .sort({ dueDate: -1 })
+      .limit(24);
+
+    res.json({
+      resident,
+      payments: payments.map((p) => enrichPayment(p, billingSettings)),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

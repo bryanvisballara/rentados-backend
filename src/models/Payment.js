@@ -22,9 +22,15 @@ const paymentSchema = new mongoose.Schema(
     },
     concept: {
       type: String,
-      enum: ['administration', 'utilities', 'parking', 'fine', 'other'],
+      enum: ['administration', 'utilities', 'parking', 'fine', 'service', 'other'],
       default: 'administration',
     },
+    facilityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Facility',
+      index: true,
+    },
+    conceptLabel: { type: String, trim: true },
     period: { type: String, required: true, trim: true },
     amount: { type: Number, required: true, min: 0 },
     paidAmount: { type: Number, default: 0, min: 0 },

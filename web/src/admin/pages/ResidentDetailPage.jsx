@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { adminApi } from '../../api/client';
+import { adminApi, formatCop } from '../../api/client';
+import { getPaymentConceptLabel } from '../paymentConcepts';
 import '../admin.css';
 
 export default function ResidentDetailPage() {
@@ -71,8 +72,8 @@ export default function ResidentDetailPage() {
                 {payments.map((p) => (
                   <tr key={p._id}>
                     <td>{p.period}</td>
-                    <td>{p.concept}</td>
-                    <td>${p.amount?.toLocaleString('es-CO')}</td>
+                    <td>{getPaymentConceptLabel(p)}</td>
+                    <td>{formatCop(p.amount)}</td>
                     <td>
                       <span className={`admin-badge admin-badge--${p.status}`}>{p.status}</span>
                     </td>

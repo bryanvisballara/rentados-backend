@@ -3,6 +3,7 @@ export const ADMIN_NAV = [
   { to: '/admin/torres', label: 'Torres y unidades' },
   { to: '/admin/asignacion', label: 'Residentes' },
   { to: '/admin/servicios', label: 'Servicios' },
+  { to: '/admin/servicios/reservas', label: 'Reservas' },
   { to: '/admin/publicaciones', label: 'Publicaciones' },
   { to: '/admin/porteria', label: 'Portería' },
   { to: '/admin/parqueaderos', label: 'Parqueaderos' },

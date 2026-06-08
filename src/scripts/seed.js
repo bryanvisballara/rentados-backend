@@ -13,11 +13,15 @@ const {
   ServiceProvider,
   Service,
   Facility,
+  FacilityBooking,
   ServiceSuspension,
   Announcement,
   Publication,
   Payment,
   VisitorParking,
+  LockerPackage,
+  ResidentNotification,
+  VisitorParkingVisit,
   QuickAction,
   EmergencyContact,
 } = require('../models');
@@ -48,11 +52,15 @@ async function runSeed() {
     ServiceProvider.deleteMany({}),
     Service.deleteMany({}),
     Facility.deleteMany({}),
+    FacilityBooking.deleteMany({}),
     ServiceSuspension.deleteMany({}),
     Announcement.deleteMany({}),
     Publication.deleteMany({}),
     Payment.deleteMany({}),
     VisitorParking.deleteMany({}),
+    LockerPackage.deleteMany({}),
+    ResidentNotification.deleteMany({}),
+    VisitorParkingVisit.deleteMany({}),
     QuickAction.deleteMany({}),
     EmergencyContact.deleteMany({}),
   ]);
@@ -87,6 +95,11 @@ async function runSeed() {
           durationDays: 30,
           autoLiftWhenPaid: true,
         },
+      },
+      locker: {
+        enabled: true,
+        receiveWhenOverdue: true,
+        notifyWhenOverdue: true,
       },
     },
   });
@@ -196,6 +209,7 @@ async function runSeed() {
     moveInDate: new Date('2024-03-01'),
     isPrimary: true,
   });
+  const residentProfile = await Resident.findOne({ userId: residentUser._id });
 
   await Payment.insertMany([
     {
@@ -355,9 +369,23 @@ async function runSeed() {
       icon: 'users',
       capacity: 40,
       price: 180000,
-      pricingType: 'per_use',
+      pricingType: 'per_block',
       blockWhenOverdue: true,
       requiresApproval: true,
+      bookable: true,
+      bookingPricing: {
+        mode: 'blocks',
+        blocks: [
+          { label: '4 horas', durationMinutes: 240, price: 180000 },
+          { label: '8 horas', durationMinutes: 480, price: 320000 },
+        ],
+      },
+      bookingRules: {
+        slotMinutes: 60,
+        minDurationMinutes: 240,
+        maxDurationMinutes: 480,
+        advanceBookingDays: 30,
+      },
       openHours: { start: '08:00', end: '22:00' },
       seasonOpenDate: new Date('2026-01-01'),
       seasonCloseDate: new Date('2026-12-31'),
@@ -388,22 +416,94 @@ async function runSeed() {
       description: 'Zona de asados en terraza',
       icon: 'flame',
       capacity: 20,
-      price: 85000,
-      pricingType: 'per_use',
+      price: 45000,
+      pricingType: 'per_hour',
       blockWhenOverdue: false,
-      requiresApproval: true,
+      requiresApproval: false,
+      bookable: true,
+      bookingPricing: {
+        mode: 'hourly',
+        hourlyRate: 45000,
+        blocks: [],
+      },
+      bookingRules: {
+        slotMinutes: 60,
+        minDurationMinutes: 120,
+        maxDurationMinutes: 360,
+        advanceBookingDays: 14,
+      },
       openHours: { start: '10:00', end: '22:00' },
-      status: 'maintenance',
-      maintenanceClosures: [
-        {
-          startAt: new Date('2026-06-01'),
-          endAt: new Date('2026-06-15'),
-          reason: 'Mantenimiento de gas',
-          isActive: true,
-        },
-      ],
+      status: 'open',
+    },
+    {
+      organizationId: org._id,
+      buildingId: building._id,
+      name: 'Sauna',
+      slug: 'sauna',
+      description: 'Sauna seca — reserva por paquetes de 2 horas',
+      icon: 'thermometer',
+      capacity: 6,
+      price: 60000,
+      pricingType: 'per_block',
+      blockWhenOverdue: true,
+      requiresApproval: false,
+      bookable: true,
+      bookingPricing: {
+        mode: 'blocks',
+        blocks: [{ label: '2 horas', durationMinutes: 120, price: 60000 }],
+      },
+      bookingRules: {
+        slotMinutes: 60,
+        minDurationMinutes: 120,
+        maxDurationMinutes: 120,
+        advanceBookingDays: 7,
+      },
+      openHours: { start: '07:00', end: '21:00' },
+      status: 'open',
     },
   ]);
+
+  const bookingStart = new Date();
+  bookingStart.setDate(bookingStart.getDate() + ((8 - bookingStart.getDay()) % 7 || 7));
+  bookingStart.setHours(14, 0, 0, 0);
+  const bookingEnd = new Date(bookingStart.getTime() + 4 * 60 * 60000);
+
+  await FacilityBooking.create({
+    organizationId: org._id,
+    buildingId: building._id,
+    facilityId: facilities[1]._id,
+    residentId: residentProfile._id,
+    unitId: units[0]._id,
+    startAt: bookingStart,
+    endAt: bookingEnd,
+    durationMinutes: 240,
+    totalPrice: 180000,
+    currency: 'COP',
+    pricingMode: 'blocks',
+    pricingLabel: '4 horas',
+    status: 'confirmed',
+    notes: 'Cumpleaños familiar',
+  });
+
+  const bbqStart = new Date(bookingStart);
+  bbqStart.setDate(bbqStart.getDate() + 1);
+  bbqStart.setHours(11, 0, 0, 0);
+  const bbqEnd = new Date(bbqStart.getTime() + 3 * 60 * 60000);
+
+  await FacilityBooking.create({
+    organizationId: org._id,
+    buildingId: building._id,
+    facilityId: facilities[3]._id,
+    residentId: residentProfile._id,
+    unitId: units[0]._id,
+    startAt: bbqStart,
+    endAt: bbqEnd,
+    durationMinutes: 180,
+    totalPrice: 135000,
+    currency: 'COP',
+    pricingMode: 'hourly',
+    status: 'confirmed',
+  });
 
   org.settings.billing.autoSuspension = {
     enabled: true,

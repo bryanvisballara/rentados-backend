@@ -1,0 +1,133 @@
+.porteria-shell {
+  display: flex;
+  min-height: 100dvh;
+  background: var(--color-cream, #f6f4f0);
+}
+
+.porteria-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1rem;
+  background: #2f4f46;
+  color: #faf7f2;
+}
+
+.porteria-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.5rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.porteria-sidebar__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.porteria-sidebar__subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.porteria-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.25rem 0;
+  flex: 1;
+}
+
+.porteria-sidebar__link {
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-md, 8px);
+  color: rgba(250, 247, 242, 0.82);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.porteria-sidebar__link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #faf7f2;
+}
+
+.porteria-sidebar__link--active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #faf7f2;
+}
+
+.porteria-sidebar__footer {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.porteria-sidebar__user {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+
+.porteria-sidebar__logout {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: #faf7f2;
+  cursor: pointer;
+  font: inherit;
+}
+
+.porteria-main {
+  flex: 1;
+  min-width: 0;
+  padding: 1.5rem;
+  overflow: auto;
+}
+
+.porteria-page__header {
+  margin-bottom: 1.25rem;
+}
+
+.porteria-page__header h1 {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+}
+
+.porteria-page__header p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.porteria-page__alert {
+  margin-bottom: 1rem;
+}
+
+.porteria-page__success {
+  background: #e8f5e9;
+  color: #1b5e20;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 900px) {
+  .porteria-shell {
+    flex-direction: column;
+  }
+
+  .porteria-sidebar {
+    width: 100%;
+  }
+
+  .porteria-sidebar__nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

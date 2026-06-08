@@ -1,0 +1,139 @@
+.facility-cal {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
+  overflow: hidden;
+}
+
+.facility-cal__head {
+  display: grid;
+  grid-template-columns: 64px repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-cream-light);
+}
+
+.facility-cal__time-gutter {
+  border-right: 1px solid var(--color-border);
+}
+
+.facility-cal__day-head {
+  padding: 0.65rem 0.35rem;
+  text-align: center;
+  border-right: 1px solid var(--color-border);
+  font-size: 0.8125rem;
+}
+
+.facility-cal__day-head:last-child {
+  border-right: none;
+}
+
+.facility-cal__day-head span {
+  display: block;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.6875rem;
+}
+
+.facility-cal__body {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  overflow-x: auto;
+}
+
+.facility-cal__empty {
+  margin: 0;
+  padding: 1.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.facility-cal__times {
+  border-right: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.facility-cal__time-label {
+  height: var(--hour-height, 48px);
+  padding-right: 0.5rem;
+  text-align: right;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  transform: translateY(-0.45rem);
+}
+
+.facility-cal__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(110px, 1fr));
+  position: relative;
+  min-width: 770px;
+}
+
+.facility-cal__day-col {
+  position: relative;
+  border-right: 1px solid var(--color-border);
+}
+
+.facility-cal__day-col:last-child {
+  border-right: none;
+}
+
+.facility-cal__slot {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid rgba(221, 214, 203, 0.65);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.facility-cal__slot:hover {
+  background: rgba(30, 61, 50, 0.05);
+}
+
+.facility-cal__event {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  border: none;
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  color: #fff;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.facility-cal__event--confirmed {
+  background: #2a5244;
+}
+
+.facility-cal__event--pending {
+  background: #8a6d3b;
+}
+
+.facility-cal__event--own {
+  outline: 2px solid rgba(255, 255, 255, 0.65);
+}
+
+.facility-cal__event-title {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.facility-cal__event-time {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.6875rem;
+  opacity: 0.9;
+}
+
+@media (max-width: 900px) {
+  .facility-cal__grid {
+    min-width: 640px;
+  }
+}

@@ -29,6 +29,11 @@ const organizationSchema = new mongoose.Schema(
         },
         defaultAdministrationFee: { type: Number, min: 0 },
       },
+      locker: {
+        enabled: { type: Boolean, default: false },
+        receiveWhenOverdue: { type: Boolean, default: true },
+        notifyWhenOverdue: { type: Boolean, default: true },
+      },
     },
   },
   { timestamps: true }

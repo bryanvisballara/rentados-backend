@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { adminApi } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import '../admin.css';
 
 const emptyStaff = {
@@ -10,20 +12,46 @@ const emptyStaff = {
   password: 'Rentados2026!',
 };
 
+const defaultLockerSettings = {
+  enabled: false,
+  receiveWhenOverdue: true,
+  notifyWhenOverdue: true,
+};
+
 export default function PorteriaPage() {
   const [staff, setStaff] = useState([]);
+  const [lockerSettings, setLockerSettings] = useState(defaultLockerSettings);
+  const [savingLocker, setSavingLocker] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState(emptyStaff);
   const [editingId, setEditingId] = useState(null);
 
   async function load() {
-    const data = await adminApi.staff.list();
-    setStaff(data.staff);
+    const [staffData, settingsData] = await Promise.all([
+      adminApi.staff.list(),
+      adminApi.porteriaSettings.get(),
+    ]);
+    setStaff(staffData.staff);
+    setLockerSettings({ ...defaultLockerSettings, ...settingsData.locker });
   }
 
   useEffect(() => {
     load().catch((err) => setError(err.message));
   }, []);
+
+  async function saveLockerSettings(e) {
+    e.preventDefault();
+    setSavingLocker(true);
+    setError('');
+    try {
+      const data = await adminApi.porteriaSettings.update(lockerSettings);
+      setLockerSettings({ ...defaultLockerSettings, ...data.locker });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingLocker(false);
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -71,11 +99,72 @@ export default function PorteriaPage() {
   return (
     <div className="admin-page">
       <header className="admin-page__header">
-        <h1>Usuarios de portería</h1>
-        <p>Crea, edita contraseñas y elimina accesos al portal de portería.</p>
+        <h1>Portería</h1>
+        <p>Configura el casillero de paquetes y gestiona los accesos al portal de portería.</p>
       </header>
 
       {error && <div className="admin-error">{error}</div>}
+
+      <div className="admin-card">
+        <h2>Servicio de casillero</h2>
+        <p className="admin-modal__hint">
+          Si lo habilitas, portería podrá registrar paquetes con foto y comentario. El residente recibe una
+          notificación en su app (push nativo próximamente).
+        </p>
+        <form className="admin-form" onSubmit={saveLockerSettings}>
+          <label className="admin-checkbox" style={{ gridColumn: '1 / -1' }}>
+            <input
+              type="checkbox"
+              checked={lockerSettings.enabled}
+              onChange={(e) => setLockerSettings({ ...lockerSettings, enabled: e.target.checked })}
+            />
+            <span>Habilitar casillero de paquetes en portal de portería</span>
+          </label>
+
+          {lockerSettings.enabled && (
+            <>
+              <label className="admin-checkbox" style={{ gridColumn: '1 / -1' }}>
+                <input
+                  type="checkbox"
+                  checked={lockerSettings.receiveWhenOverdue}
+                  onChange={(e) =>
+                    setLockerSettings({ ...lockerSettings, receiveWhenOverdue: e.target.checked })
+                  }
+                />
+                <span>Recibir paquetes de unidades en mora</span>
+              </label>
+              <label className="admin-checkbox" style={{ gridColumn: '1 / -1' }}>
+                <input
+                  type="checkbox"
+                  checked={lockerSettings.notifyWhenOverdue}
+                  onChange={(e) =>
+                    setLockerSettings({ ...lockerSettings, notifyWhenOverdue: e.target.checked })
+                  }
+                  disabled={!lockerSettings.receiveWhenOverdue}
+                />
+                <span>Notificar al residente si la unidad está en mora</span>
+              </label>
+              {!lockerSettings.receiveWhenOverdue && (
+                <p className="admin-hours-preview" style={{ gridColumn: '1 / -1' }}>
+                  Portería no podrá registrar paquetes para unidades en mora.
+                </p>
+              )}
+              {lockerSettings.receiveWhenOverdue && !lockerSettings.notifyWhenOverdue && (
+                <p className="admin-hours-preview" style={{ gridColumn: '1 / -1' }}>
+                  Se guardará el paquete en retención y el residente no será notificado hasta que la mora se
+                  regularice o portería envíe la notificación manualmente.
+                </p>
+              )}
+            </>
+          )}
+
+          <div className="admin-actions" style={{ gridColumn: '1 / -1' }}>
+            <button type="submit" className="admin-btn" disabled={savingLocker}>
+              {savingLocker ? 'Guardando…' : 'Guardar configuración'}
+            </button>
+          </div>
+        </form>
+      </div>
 
       <div className="admin-card">
         <h2>{editingId ? 'Editar usuario' : 'Nuevo usuario de portería'}</h2>

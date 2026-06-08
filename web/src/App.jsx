@@ -7,17 +7,24 @@ import ConjuntosPage from './superadmin/pages/ConjuntosPage';
 import DashboardPage from './admin/pages/DashboardPage';
 import TowersPage from './admin/pages/TowersPage';
 import FacilitiesPage from './admin/pages/FacilitiesPage';
+import FacilityBookingsPage from './admin/pages/FacilityBookingsPage';
 import PublicationsPage from './admin/pages/PublicationsPage';
 import PorteriaPage from './admin/pages/PorteriaPage';
 import VisitorParkingPage from './admin/pages/VisitorParkingPage';
 import CarteraPage from './admin/pages/CarteraPage';
+import CarteraDetailPage from './admin/pages/CarteraDetailPage';
 import MorosidadPage from './admin/pages/MorosidadPage';
 import ResidentHomePage from './resident/ResidentHomePage';
 import ResidentAssignPage from './admin/pages/ResidentAssignPage';
 import ResidentsPage from './admin/pages/ResidentsPage';
 import ResidentDetailPage from './admin/pages/ResidentDetailPage';
 import PorteriaLoginPage from './porteria/PorteriaLoginPage';
-import PorteriaHomePage from './porteria/PorteriaHomePage';
+import PorteriaLayout from './porteria/PorteriaLayout';
+import RegisterPackagePage from './porteria/pages/RegisterPackagePage';
+import ParkingPage from './porteria/pages/ParkingPage';
+import BitacoraPage from './porteria/pages/BitacoraPage';
+import CasilleroPage from './porteria/pages/CasilleroPage';
+import NotificationsPage from './porteria/pages/NotificationsPage';
 
 export default function App() {
   return (
@@ -51,10 +58,12 @@ export default function App() {
         <Route path="torres" element={<TowersPage />} />
         <Route path="asignacion" element={<ResidentAssignPage />} />
         <Route path="servicios" element={<FacilitiesPage />} />
+        <Route path="servicios/reservas" element={<FacilityBookingsPage />} />
         <Route path="publicaciones" element={<PublicationsPage />} />
         <Route path="porteria" element={<PorteriaPage />} />
         <Route path="parqueaderos" element={<VisitorParkingPage />} />
         <Route path="cartera" element={<CarteraPage />} />
+        <Route path="cartera/:view" element={<CarteraDetailPage />} />
         <Route path="morosidad" element={<MorosidadPage />} />
         <Route path="residentes" element={<ResidentsPage />} />
         <Route path="residentes/:id" element={<ResidentDetailPage />} />
@@ -64,10 +73,17 @@ export default function App() {
         path="/porteria"
         element={
           <ProtectedRoute roles={['ORG_STAFF']} loginPath="/porteria/login">
-            <PorteriaHomePage />
+            <PorteriaLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<Navigate to="registrar-paquete" replace />} />
+        <Route path="registrar-paquete" element={<RegisterPackagePage />} />
+        <Route path="parqueadero" element={<ParkingPage />} />
+        <Route path="bitacora" element={<BitacoraPage />} />
+        <Route path="casillero" element={<CasilleroPage />} />
+        <Route path="notificaciones" element={<NotificationsPage />} />
+      </Route>
 
       <Route
         path="/app"

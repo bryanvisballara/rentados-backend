@@ -18,5 +18,8 @@ module.exports = {
   EmergencyContact: require('./EmergencyContact'),
   Payment: require('./Payment'),
   VisitorParking: require('./VisitorParking'),
+  VisitorParkingVisit: require('./VisitorParkingVisit'),
   ServiceSuspension: require('./ServiceSuspension'),
+  LockerPackage: require('./LockerPackage'),
+  ResidentNotification: require('./ResidentNotification'),
 };

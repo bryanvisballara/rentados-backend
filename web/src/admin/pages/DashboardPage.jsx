@@ -1,21 +1,41 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminApi, formatCop } from '../../api/client';
+import RegisterPaymentModal from '../components/RegisterPaymentModal';
 import '../admin.css';
 
 export default function DashboardPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState('');
+
+  async function loadDashboard() {
+    const dashboard = await adminApi.dashboard();
+    setData(dashboard);
+  }
 
   useEffect(() => {
-    adminApi
-      .dashboard()
-      .then(setData)
-      .catch((err) => setError(err.message));
+    loadDashboard().catch((err) => setError(err.message));
   }, []);
+
+  function handlePaymentSuccess(result) {
+    setPaymentNotice(`Pago registrado: ${formatCop(result.payment?.paidAmount || result.payment?.amount)}`);
+    loadDashboard().catch((err) => setError(err.message));
+  }
 
   const stats = data?.stats ?? {};
   const finance = data?.finance ?? {};
+  const period = finance.currentPeriod || '';
+
+  const financeCards = [
+    { view: 'cartera-actual', label: 'Cartera actual', value: formatCop(finance.carteraActual), money: true },
+    { view: 'recaudo', label: 'Recaudo del mes', value: formatCop(finance.recaudoMes), money: true },
+    { view: 'morosidad', label: 'Morosidad total', value: formatCop(finance.morosidadTotal), money: true },
+    { view: 'pendiente', label: 'Pendiente del mes', value: formatCop(finance.pendienteMes), money: true },
+    { view: 'facturado', label: 'Facturado del mes', value: formatCop(finance.facturadoMes), money: true },
+    { view: 'tasa-recaudo', label: 'Tasa de recaudo', value: `${finance.tasaRecaudo ?? 0}%`, money: false },
+  ];
 
   return (
     <div className="admin-page">
@@ -25,6 +45,7 @@ export default function DashboardPage() {
       </header>
 
       {error && <div className="admin-error">{error}</div>}
+      {paymentNotice && <div className="admin-success">{paymentNotice}</div>}
 
       <div className="admin-grid" style={{ marginBottom: '1rem' }}>
         <div className="admin-stat">
@@ -42,32 +63,25 @@ export default function DashboardPage() {
       </div>
 
       <div className="admin-card">
-        <h2>Cartera — {finance.currentPeriod || 'mes actual'}</h2>
+        <div className="admin-toolbar">
+          <h2 style={{ margin: 0 }}>Cartera — {finance.currentPeriod || 'mes actual'}</h2>
+          <button type="button" className="admin-btn" onClick={() => setPaymentModalOpen(true)}>
+            Registrar nuevo pago
+          </button>
+        </div>
         <div className="admin-grid">
-          <div className="admin-stat">
-            <p className="admin-stat__label">Cartera actual</p>
-            <p className="admin-stat__value admin-stat__value--money">{formatCop(finance.carteraActual)}</p>
-          </div>
-          <div className="admin-stat">
-            <p className="admin-stat__label">Recaudo del mes</p>
-            <p className="admin-stat__value admin-stat__value--money">{formatCop(finance.recaudoMes)}</p>
-          </div>
-          <div className="admin-stat">
-            <p className="admin-stat__label">Morosidad total</p>
-            <p className="admin-stat__value admin-stat__value--money">{formatCop(finance.morosidadTotal)}</p>
-          </div>
-          <div className="admin-stat">
-            <p className="admin-stat__label">Pendiente del mes</p>
-            <p className="admin-stat__value admin-stat__value--money">{formatCop(finance.pendienteMes)}</p>
-          </div>
-          <div className="admin-stat">
-            <p className="admin-stat__label">Facturado del mes</p>
-            <p className="admin-stat__value admin-stat__value--money">{formatCop(finance.facturadoMes)}</p>
-          </div>
-          <div className="admin-stat">
-            <p className="admin-stat__label">Tasa de recaudo</p>
-            <p className="admin-stat__value">{finance.tasaRecaudo ?? 0}%</p>
-          </div>
+          {financeCards.map((card) => (
+            <Link
+              key={card.view}
+              to={`/admin/cartera/${card.view}${period ? `?period=${period}` : ''}`}
+              className="admin-stat admin-stat--link"
+            >
+              <p className="admin-stat__label">{card.label}</p>
+              <p className={`admin-stat__value${card.money ? ' admin-stat__value--money' : ''}`}>
+                {card.value}
+              </p>
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -109,6 +123,12 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      <RegisterPaymentModal
+        open={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        onSuccess={handlePaymentSuccess}
+      />
     </div>
   );
 }
