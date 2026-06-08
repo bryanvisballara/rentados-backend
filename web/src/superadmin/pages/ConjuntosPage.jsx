@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { platformApi } from '../../api/client';
 import { setActiveTenant } from '../../api/tenantContext';
 import '../../admin/admin.css';
+import './ConjuntosPage.css';
 
 const emptyConjunto = {
   organizationName: '',
@@ -12,6 +13,7 @@ const emptyConjunto = {
   buildingName: '',
   city: '',
   state: '',
+  country: 'Colombia',
   description: '',
   adminFirstName: '',
   adminLastName: '',
@@ -26,25 +28,57 @@ const emptyAdmin = {
   password: '',
 };
 
+function AdoptionCell({ rate, healthKey }) {
+  const fillClass =
+    healthKey === 'critical' ? 'is-critical' : healthKey === 'low' ? 'is-low' : '';
+
+  return (
+    <span className="conjuntos-adoption">
+      <span>{rate}%</span>
+      <span className="conjuntos-adoption__bar" aria-hidden="true">
+        <span
+          className={`conjuntos-adoption__fill ${fillClass}`}
+          style={{ width: `${Math.min(rate, 100)}%` }}
+        />
+      </span>
+    </span>
+  );
+}
+
 export default function ConjuntosPage() {
   const navigate = useNavigate();
   const [organizations, setOrganizations] = useState([]);
+  const [engagement, setEngagement] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [form, setForm] = useState(emptyConjunto);
   const [creating, setCreating] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [onlyNeedsAttention, setOnlyNeedsAttention] = useState(false);
   const [expandedOrgId, setExpandedOrgId] = useState(null);
   const [adminForms, setAdminForms] = useState({});
   const [addingAdminFor, setAddingAdminFor] = useState(null);
 
   async function load() {
-    const data = await platformApi.overview();
-    setOrganizations(data.organizations);
+    const [overviewData, engagementData] = await Promise.all([
+      platformApi.overview(),
+      platformApi.conjuntosEngagement(),
+    ]);
+    setOrganizations(overviewData.organizations);
+    setEngagement(engagementData);
   }
 
   useEffect(() => {
     load().catch((err) => setError(err.message));
   }, []);
+
+  const buildings = engagement?.buildings || [];
+  const summary = engagement?.summary || {};
+
+  const visibleBuildings = useMemo(() => {
+    if (!onlyNeedsAttention) return buildings;
+    return buildings.filter((row) => ['critical', 'low', 'setup'].includes(row.health.key));
+  }, [buildings, onlyNeedsAttention]);
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -69,13 +103,14 @@ export default function ConjuntosPage() {
         email: form.email,
         phone: form.phone,
         buildingName: form.buildingName,
-        address: { city: form.city, state: form.state, country: 'Colombia' },
+        address: { city: form.city, state: form.state, country: form.country || 'Colombia' },
         description: form.description,
         admins,
       });
 
       setForm(emptyConjunto);
-      setSuccess('Conjunto creado correctamente. Todos los datos quedan ligados a su edificio en MongoDB.');
+      setShowCreateForm(false);
+      setSuccess('Conjunto creado correctamente.');
       await load();
     } catch (err) {
       setError(err.message);
@@ -123,172 +158,296 @@ export default function ConjuntosPage() {
       <header className="admin-page__header">
         <h1>Conjuntos residenciales</h1>
         <p>
-          Crea edificios o conjuntos, asígnale uno o varios administradores y gestiona cada predio con
-          sus torres, unidades y usuarios referenciados por su ID de edificio.
+          Adopción de la app por apartamento. Identifica unidades sin app activa y registra
+          seguimiento de visitas para impulsar la descarga.
         </p>
       </header>
 
       {error && <div className="admin-error">{error}</div>}
-      {success && (
-        <div className="admin-card" style={{ background: '#dceee4', color: '#1e5a3d' }}>
-          {success}
+      {success && <div className="admin-success">{success}</div>}
+
+      {summary.totalBuildings > 0 && (
+        <div className="conjuntos-summary">
+          <div className="admin-stat">
+            <p className="admin-stat__label">Conjuntos</p>
+            <p className="admin-stat__value">{summary.totalBuildings}</p>
+          </div>
+          <div className="admin-stat">
+            <p className="admin-stat__label">Apartamentos</p>
+            <p className="admin-stat__value">{summary.totalApartments ?? 0}</p>
+          </div>
+          <div className="admin-stat">
+            <p className="admin-stat__label">Con app activa</p>
+            <p className="admin-stat__value">{summary.unitsWithActiveApp ?? 0}</p>
+            <p className="conjuntos-metric-sub">últimos {summary.appActiveWindowDays || 30} días</p>
+          </div>
+          <div className="admin-stat">
+            <p className="admin-stat__label">Sin app activa</p>
+            <p className="admin-stat__value admin-stat__value--warn">
+              {summary.unitsWithoutApp ?? 0}
+            </p>
+          </div>
+          <div className="admin-stat">
+            <p className="admin-stat__label">Adopción promedio</p>
+            <p className="admin-stat__value">{summary.averageAppAdoption ?? 0}%</p>
+          </div>
+          <div className="admin-stat">
+            <p className="admin-stat__label">Pendientes visita</p>
+            <p className="admin-stat__value admin-stat__value--alert">
+              {summary.unitsPendingFollowUp ?? 0}
+            </p>
+          </div>
+          <div className="admin-stat">
+            <p className="admin-stat__label">Requieren refuerzo</p>
+            <p className="admin-stat__value admin-stat__value--warn">
+              {summary.lowEngagementBuildings ?? 0}
+            </p>
+          </div>
         </div>
       )}
 
-      <div className="admin-card">
-        <h2>Crear conjunto residencial</h2>
-        <form className="admin-form" onSubmit={handleCreate}>
-          <label>
-            Nombre administración
-            <input
-              value={form.organizationName}
-              onChange={(e) => setForm({ ...form, organizationName: e.target.value })}
-              placeholder="Administración Paraíso Caribe"
-              required
-            />
-          </label>
-          <label>
-            Nombre del conjunto / edificio
-            <input
-              value={form.buildingName}
-              onChange={(e) => setForm({ ...form, buildingName: e.target.value })}
-              placeholder="Conjunto Paraíso Caribe"
-              required
-            />
-          </label>
-          <label>
-            NIT
-            <input value={form.nit} onChange={(e) => setForm({ ...form, nit: e.target.value })} />
-          </label>
-          <label>
-            Correo contacto
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-          </label>
-          <label>
-            Teléfono
-            <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          </label>
-          <label>
-            Ciudad
-            <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-          </label>
-          <label>
-            Departamento
-            <input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
-          </label>
-          <label style={{ gridColumn: '1 / -1' }}>
-            Descripción
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-          </label>
+      <div className="admin-card conjuntos-table-card">
+        <div className="conjuntos-table-card__head">
+          <h2>Adopción por conjunto</h2>
+          <p>
+            App activa = al menos un residente del apartamento con sesión en los últimos{' '}
+            {summary.appActiveWindowDays || 30} días.
+          </p>
+        </div>
 
-          <label style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>
-            <strong>Primer administrador (opcional)</strong>
-          </label>
-          <label>
-            Nombre admin
+        <div className="conjuntos-toolbar" style={{ padding: '0 1.25rem 1rem' }}>
+          <label className="admin-checkbox">
             <input
-              value={form.adminFirstName}
-              onChange={(e) => setForm({ ...form, adminFirstName: e.target.value })}
+              type="checkbox"
+              checked={onlyNeedsAttention}
+              onChange={(e) => setOnlyNeedsAttention(e.target.checked)}
             />
+            Solo conjuntos que requieren atención
           </label>
-          <label>
-            Apellido admin
-            <input
-              value={form.adminLastName}
-              onChange={(e) => setForm({ ...form, adminLastName: e.target.value })}
-            />
-          </label>
-          <label>
-            Correo admin
-            <input
-              type="email"
-              value={form.adminEmail}
-              onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
-            />
-          </label>
-          <label>
-            Contraseña admin
-            <input
-              value={form.adminPassword}
-              onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
-            />
-          </label>
+          <p className="conjuntos-toolbar__hint">
+            Ordenados por prioridad: baja adopción primero.
+          </p>
+        </div>
 
-          <button type="submit" className="admin-btn" disabled={creating}>
-            {creating ? 'Creando…' : 'Crear conjunto'}
-          </button>
-        </form>
-      </div>
-
-      <div className="admin-card admin-table-wrap">
-        <h2>Conjuntos registrados</h2>
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Administración</th>
-              <th>Conjunto / edificio</th>
-              <th>Ciudad</th>
-              <th>Administradores</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {organizations.length === 0 ? (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
               <tr>
-                <td colSpan={5} className="admin-empty">
-                  Aún no hay conjuntos creados.
-                </td>
+                <th>Salud</th>
+                <th>Conjunto</th>
+                <th>Apartamentos</th>
+                <th>Con app</th>
+                <th>Sin app</th>
+                <th>Adopción</th>
+                <th>Seguimiento</th>
+                <th>Acciones</th>
               </tr>
-            ) : (
-              organizations.flatMap((org) =>
-                (org.buildings?.length ? org.buildings : [null]).map((building) => (
-                  <tr key={`${org._id}-${building?._id || 'none'}`}>
-                    <td>{org.name}</td>
-                    <td>{building?.name || '—'}</td>
-                    <td>{building?.address?.city || '—'}</td>
-                    <td>{org.admins?.length || 0}</td>
+            </thead>
+            <tbody>
+              {!engagement ? (
+                <tr>
+                  <td colSpan={8} className="admin-empty">
+                    Cargando indicadores…
+                  </td>
+                </tr>
+              ) : visibleBuildings.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="admin-empty">
+                    No hay conjuntos con este filtro.
+                  </td>
+                </tr>
+              ) : (
+                visibleBuildings.map((row) => (
+                  <tr key={row.buildingId}>
+                    <td>
+                      <span className={`conjuntos-health conjuntos-health--${row.health.key}`}>
+                        {row.health.label}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="conjuntos-building-name">{row.buildingName}</span>
+                      <span className="conjuntos-building-org">{row.organizationName}</span>
+                      <span className="conjuntos-metric-sub">
+                        {row.city}
+                        {row.country ? ` · ${row.country}` : ''}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="conjuntos-metric">{row.totalApartments ?? 0}</span>
+                    </td>
+                    <td>
+                      <span className="conjuntos-metric">{row.unitsWithActiveApp ?? 0}</span>
+                    </td>
+                    <td>
+                      <span className="conjuntos-metric">{row.unitsWithoutApp ?? 0}</span>
+                    </td>
+                    <td>
+                      <AdoptionCell rate={row.appAdoptionRate ?? 0} healthKey={row.health.key} />
+                    </td>
+                    <td>
+                      <span className="conjuntos-metric-sub">
+                        {row.unitsWithFollowUp ?? 0} con visita
+                      </span>
+                      <span className="conjuntos-metric-sub">
+                        {row.unitsPendingFollowUp ?? 0} pendientes
+                      </span>
+                    </td>
                     <td className="admin-actions">
-                      {building && (
-                        <>
-                          <button
-                            type="button"
-                            className="admin-btn"
-                            onClick={() => manageConjunto(org, building)}
-                          >
-                            Administrar
-                          </button>
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn--ghost"
-                            onClick={() =>
-                              setExpandedOrgId(expandedOrgId === org._id ? null : org._id)
-                            }
-                          >
-                            Admins
-                          </button>
-                        </>
-                      )}
+                      <Link
+                        to={`/super-admin/conjuntos/${row.buildingId}/adopcion`}
+                        className="admin-btn"
+                      >
+                        Ver sin app
+                      </Link>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost"
+                        onClick={() =>
+                          manageConjunto(
+                            { _id: row.organizationId, name: row.organizationName },
+                            { _id: row.buildingId, name: row.buildingName }
+                          )
+                        }
+                      >
+                        Administrar
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost"
+                        onClick={() =>
+                          setExpandedOrgId(
+                            expandedOrgId === String(row.organizationId)
+                              ? null
+                              : String(row.organizationId)
+                          )
+                        }
+                      >
+                        Admins
+                      </button>
                     </td>
                   </tr>
                 ))
-              )
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      <button
+        type="button"
+        className="admin-btn admin-btn--ghost conjuntos-create-toggle"
+        onClick={() => setShowCreateForm((prev) => !prev)}
+      >
+        {showCreateForm ? 'Ocultar formulario' : '+ Crear nuevo conjunto'}
+      </button>
+
+      {showCreateForm && (
+        <div className="admin-card">
+          <h2>Crear conjunto residencial</h2>
+          <form className="admin-form" onSubmit={handleCreate}>
+            <label>
+              Nombre administración
+              <input
+                value={form.organizationName}
+                onChange={(e) => setForm({ ...form, organizationName: e.target.value })}
+                placeholder="Administración Paraíso Caribe"
+                required
+              />
+            </label>
+            <label>
+              Nombre del conjunto / edificio
+              <input
+                value={form.buildingName}
+                onChange={(e) => setForm({ ...form, buildingName: e.target.value })}
+                placeholder="Conjunto Paraíso Caribe"
+                required
+              />
+            </label>
+            <label>
+              NIT
+              <input value={form.nit} onChange={(e) => setForm({ ...form, nit: e.target.value })} />
+            </label>
+            <label>
+              Correo contacto
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+            </label>
+            <label>
+              Teléfono
+              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </label>
+            <label>
+              Ciudad
+              <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+            </label>
+            <label>
+              Departamento
+              <input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
+            </label>
+            <label>
+              País
+              <input
+                value={form.country}
+                onChange={(e) => setForm({ ...form, country: e.target.value })}
+                placeholder="Colombia"
+              />
+            </label>
+            <label style={{ gridColumn: '1 / -1' }}>
+              Descripción
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+              />
+            </label>
+
+            <label style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>
+              <strong>Primer administrador (opcional)</strong>
+            </label>
+            <label>
+              Nombre admin
+              <input
+                value={form.adminFirstName}
+                onChange={(e) => setForm({ ...form, adminFirstName: e.target.value })}
+              />
+            </label>
+            <label>
+              Apellido admin
+              <input
+                value={form.adminLastName}
+                onChange={(e) => setForm({ ...form, adminLastName: e.target.value })}
+              />
+            </label>
+            <label>
+              Correo admin
+              <input
+                type="email"
+                value={form.adminEmail}
+                onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
+              />
+            </label>
+            <label>
+              Contraseña admin
+              <input
+                value={form.adminPassword}
+                onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
+              />
+            </label>
+
+            <button type="submit" className="admin-btn" disabled={creating}>
+              {creating ? 'Creando…' : 'Crear conjunto'}
+            </button>
+          </form>
+        </div>
+      )}
 
       {expandedOrgId && (
         <div className="admin-card">
           <h2>Administradores del conjunto</h2>
           {organizations
-            .filter((org) => org._id === expandedOrgId)
+            .filter((org) => String(org._id) === expandedOrgId)
             .map((org) => (
               <div key={org._id}>
                 <ul className="admin-highlights">

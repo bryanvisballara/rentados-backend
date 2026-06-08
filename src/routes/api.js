@@ -6,11 +6,13 @@ const residentRoutes = require('./resident');
 const porteriaRoutes = require('./porteria');
 
 const platformRoutes = require('./platform');
+const providerRoutes = require('./provider');
 
 const router = express.Router();
 
 router.use('/auth', authRoutes);
 router.use('/platform', platformRoutes);
+router.use('/provider', providerRoutes);
 router.use('/admin', adminRoutes);
 router.use('/deploy', deployRoutes);
 router.use('/resident', residentRoutes);

@@ -3,12 +3,21 @@ import { adminApi, formatCop } from '../../api/client';
 import '../admin.css';
 
 const emptyTower = { name: '', code: '', floors: '' };
-const emptyUnit = { number: '', type: 'apartment', towerId: '', floor: '', administrationFee: '', adminStatus: 'current' };
+const emptyUnit = {
+  number: '',
+  code: '',
+  type: 'apartment',
+  towerId: '',
+  floor: '',
+  administrationFee: '',
+  adminStatus: 'current',
+};
 
 function createBulkRow(overrides = {}) {
   return {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     number: '',
+    code: '',
     floor: '',
     administrationFee: '',
     type: 'apartment',
@@ -35,6 +44,7 @@ function unitToBulkRow(unit) {
     unitId: unit._id,
     existing: true,
     number: unit.number,
+    code: unit.code ?? '',
     floor: unit.floor ?? '',
     administrationFee: unit.administrationFee ?? '',
     type: unit.type,
@@ -128,6 +138,7 @@ export default function TowersPage() {
         ...unitForm,
         towerId: unitForm.towerId || null,
         floor: unitForm.floor ? Number(unitForm.floor) : undefined,
+        code: unitForm.code.trim() || undefined,
         administrationFee:
           unitForm.administrationFee === ''
             ? null
@@ -190,6 +201,7 @@ export default function TowersPage() {
         towerId: bulkTowerId || null,
         units: payload.map(({ row, floor, administrationFee }) => ({
           number: row.number.trim(),
+          code: row.code.trim() || undefined,
           floor,
           administrationFee,
           type: row.type,
@@ -279,6 +291,7 @@ export default function TowersPage() {
     setEditingUnitId(unit._id);
     setUnitForm({
       number: unit.number,
+      code: unit.code ?? '',
       type: unit.type,
       towerId: unit.towerId?._id || unit.towerId || '',
       floor: unit.floor ?? '',
@@ -437,6 +450,7 @@ export default function TowersPage() {
             <input
               value={towerForm.code}
               onChange={(e) => setTowerForm({ ...towerForm, code: e.target.value })}
+              placeholder="Ej: 1 para Torre 1"
               required
             />
           </label>
@@ -493,10 +507,16 @@ export default function TowersPage() {
                   </select>
                 </label>
                 {selectedBulkTower && (
-                  <label>
-                    Unidades registradas
-                    <input value={`${existingBulkCount} en ${selectedBulkTower.name}`} readOnly />
-                  </label>
+                  <>
+                    <label>
+                      Unidades registradas
+                      <input value={`${existingBulkCount} en ${selectedBulkTower.name}`} readOnly />
+                    </label>
+                    <p className="admin-empty" style={{ marginTop: '0.5rem' }}>
+                      Para cambiar el código de una unidad registrada, usa Editar en la columna
+                      Acciones.
+                    </p>
+                  </>
                 )}
               </div>
 
@@ -511,6 +531,7 @@ export default function TowersPage() {
                   <thead>
                     <tr>
                       <th>Número</th>
+                      <th>Código</th>
                       <th>Piso</th>
                       <th>Administración</th>
                       <th>Tipo</th>
@@ -522,7 +543,7 @@ export default function TowersPage() {
                   <tbody>
                     {bulkRows.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="admin-empty">
+                        <td colSpan={8} className="admin-empty">
                           {bulkTowerId || !towers.length
                             ? 'No hay unidades registradas en esta torre. Usa las filas nuevas abajo.'
                             : 'Selecciona una torre para ver sus unidades.'}
@@ -539,6 +560,18 @@ export default function TowersPage() {
                               placeholder={bulkTowerId ? 'Ej: 701' : 'Ej: Casa 12'}
                               readOnly={row.existing}
                             />
+                          </td>
+                          <td>
+                            {row.existing ? (
+                              row.code || '—'
+                            ) : (
+                              <input
+                                className="admin-table-input admin-table-input--sm"
+                                value={row.code}
+                                onChange={(e) => updateBulkRow(row.key, 'code', e.target.value)}
+                                placeholder="Ej: 1101"
+                              />
+                            )}
                           </td>
                           <td>
                             {row.existing ? (
@@ -693,6 +726,14 @@ export default function TowersPage() {
                 value={unitForm.number}
                 onChange={(e) => setUnitForm({ ...unitForm, number: e.target.value })}
                 required
+              />
+            </label>
+            <label>
+              Código portería
+              <input
+                value={unitForm.code}
+                onChange={(e) => setUnitForm({ ...unitForm, code: e.target.value })}
+                placeholder="Ej: 1101"
               />
             </label>
             <label>

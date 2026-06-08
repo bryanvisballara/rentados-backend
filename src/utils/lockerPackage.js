@@ -238,7 +238,7 @@ async function getLockerSummaryByUnit(buildingId, organizationId) {
     buildingId,
     organizationId,
     status: { $in: ['pending_pickup', 'held'] },
-  }).populate('unitId', 'number tower');
+  }).populate('unitId', 'number tower code');
 
   const byUnit = new Map();
 
@@ -250,6 +250,7 @@ async function getLockerSummaryByUnit(buildingId, organizationId) {
       byUnit.set(unitId, {
         unitId,
         unitNumber: pkg.unitId?.number,
+        unitCode: pkg.unitId?.code,
         tower: pkg.unitId?.tower,
         count: 0,
         packages: [],

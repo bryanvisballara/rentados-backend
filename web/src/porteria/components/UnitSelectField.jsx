@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { formatUnitLabel, matchUnitQuery } from '../../utils/units';
+import { formatUnitLabel, matchUnitQuery, sortUnitsForPicker } from '../../utils/units';
 
 export default function UnitSelectField({
   units,
@@ -16,11 +16,8 @@ export default function UnitSelectField({
   }, [units, query]);
 
   const sortedUnits = useMemo(
-    () =>
-      [...filteredUnits].sort((a, b) =>
-        String(a.number).localeCompare(String(b.number), 'es', { numeric: true })
-      ),
-    [filteredUnits]
+    () => [...filteredUnits].sort((a, b) => sortUnitsForPicker(a, b, query)),
+    [filteredUnits, query]
   );
 
   return (
@@ -29,7 +26,7 @@ export default function UnitSelectField({
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar por número, piso+apto o torre (ej: 41201)"
+        placeholder="Buscar por código (ej: 41201)"
         aria-label="Buscar unidad"
         className="admin-unit-picker__search"
       />

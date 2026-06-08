@@ -18,6 +18,32 @@ const serviceProviderSchema = new mongoose.Schema(
     description: { type: String },
     rating: { type: Number, min: 0, max: 5, default: 0 },
     reviewCount: { type: Number, default: 0 },
+    /** Tarifas por categoría; las define el prestador una vez aprobado. */
+    offerings: [
+      {
+        categoryId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'ServiceCategory',
+          required: true,
+        },
+        description: { type: String, trim: true },
+        pricingNotes: { type: String, trim: true },
+        referencePrice: { type: Number, min: 0 },
+        isActive: { type: Boolean, default: true },
+      },
+    ],
+    approvalStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending',
+      index: true,
+    },
+    rejectionReason: { type: String, trim: true },
+    reviewedAt: { type: Date },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
     isVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
   },

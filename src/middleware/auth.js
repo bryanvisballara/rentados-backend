@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
+const { createTokenJti, touchUserSession } = require('../utils/userSession');
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'ORG_ADMIN'];
 const PORTERIA_ROLES = ['ORG_STAFF'];
@@ -11,16 +12,19 @@ function getJwtSecret() {
 }
 
 function signToken(user) {
-  return jwt.sign(
+  const jti = createTokenJti();
+  const token = jwt.sign(
     {
       sub: user._id.toString(),
       role: user.role,
       organizationId: user.organizationId?.toString() || null,
       staffType: user.staffType || null,
+      jti,
     },
     getJwtSecret(),
     { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
   );
+  return { token, jti };
 }
 
 function formatAuthUser(user) {
@@ -45,15 +49,30 @@ async function authenticate(req, res, next) {
 
     const token = header.slice(7);
     const payload = jwt.verify(token, getJwtSecret());
-    const user = await User.findById(payload.sub).select('-passwordHash');
+    let user;
+
+    try {
+      user = await User.findById(payload.sub).select('-passwordHash');
+    } catch (dbErr) {
+      console.error('Auth DB error:', dbErr.message);
+      return res.status(503).json({ error: 'Servicio temporalmente no disponible' });
+    }
 
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'Sesión inválida' });
     }
 
+    if (payload.jti) {
+      touchUserSession(payload.jti).catch(() => {});
+    }
+
     req.user = user;
+    req.auth = payload;
     next();
-  } catch {
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Sesión expirada' });
+    }
     return res.status(401).json({ error: 'Sesión inválida o expirada' });
   }
 }

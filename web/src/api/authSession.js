@@ -1,6 +1,8 @@
 const STORAGE_KEY = 'rentados_auth';
 const TOKEN_KEY = 'rentados_token';
 
+let hydratePromise = null;
+
 export function formatUser(user) {
   if (!user) return null;
   return {
@@ -50,6 +52,10 @@ export function getToken() {
   return loadSession()?.token || null;
 }
 
+export function isHydratingSession() {
+  return Boolean(hydratePromise);
+}
+
 async function fetchSession(token) {
   const res = await fetch('/api/v1/auth/me', {
     headers: { Authorization: `Bearer ${token}` },
@@ -60,7 +66,7 @@ async function fetchSession(token) {
   }
 
   if (!res.ok) {
-    return { error: true };
+    return { error: true, status: res.status };
   }
 
   const data = await res.json();
@@ -72,34 +78,56 @@ async function fetchSession(token) {
   };
 }
 
+function keepStoredSession(stored) {
+  if (!stored?.token) return null;
+  if (stored.user) return stored;
+  return { token: stored.token, user: null };
+}
+
 export async function hydrateSession() {
-  const stored = loadSession();
-  if (!stored?.token) {
-    clearSession();
-    return null;
-  }
+  if (hydratePromise) return hydratePromise;
 
-  try {
-    const result = await fetchSession(stored.token);
-
-    if (result.invalid) {
+  hydratePromise = (async () => {
+    const stored = loadSession();
+    if (!stored?.token) {
       clearSession();
       return null;
     }
 
-    if (result.error) {
-      return stored.user ? stored : null;
-    }
+    try {
+      const result = await fetchSession(stored.token);
 
-    persistSession(result.session);
-    return result.session;
-  } catch {
-    return stored.user ? stored : null;
+      if (result.invalid) {
+        clearSession();
+        return null;
+      }
+
+      if (result.error) {
+        return keepStoredSession(stored);
+      }
+
+      persistSession(result.session);
+      return result.session;
+    } catch {
+      return keepStoredSession(stored);
+    }
+  })();
+
+  try {
+    return await hydratePromise;
+  } finally {
+    hydratePromise = null;
   }
 }
 
 export async function refreshSession() {
-  const token = getToken();
+  if (hydratePromise) {
+    const hydrated = await hydratePromise.catch(() => null);
+    if (hydrated) return hydrated;
+  }
+
+  const stored = loadSession();
+  const token = stored?.token;
   if (!token) return null;
 
   try {
@@ -111,12 +139,12 @@ export async function refreshSession() {
     }
 
     if (result.error) {
-      return loadSession();
+      return keepStoredSession(stored);
     }
 
     persistSession(result.session);
     return result.session;
   } catch {
-    return loadSession();
+    return keepStoredSession(stored);
   }
 }

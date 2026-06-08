@@ -22,6 +22,8 @@ const buildingSchema = new mongoose.Schema(
     },
     heroImageUrl: { type: String },
     description: { type: String },
+    /** Porcentaje que Rentados cobra sobre pagos de administración (split ePayco). */
+    platformCommissionPercent: { type: Number, min: 0, max: 100, default: 3 },
     towers: [{ type: String, trim: true }],
     isActive: { type: Boolean, default: true },
   },

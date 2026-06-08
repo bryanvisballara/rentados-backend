@@ -1,6 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { Resident, Unit, Facility, FacilityBooking, Payment, Organization, LockerPackage, ResidentNotification } = require('../models');
+const { Resident, Unit, Facility, FacilityBooking, Payment, Organization, Building, LockerPackage, ResidentNotification, ShopCategory, ShopProduct, ShopOrder } = require('../models');
 const { getLockerSettings } = require('../utils/lockerSettings');
 const { formatPackage } = require('../utils/lockerPackage');
 const { authenticate, requireRoles } = require('../middleware/auth');
@@ -13,6 +13,9 @@ const {
   getBookingPricing,
   ACTIVE_STATUSES,
 } = require('../utils/facilityBooking');
+
+const { matchesShopLocation } = require('../utils/shopFilter');
+const { buildOrderNumber, formatShopOrder } = require('../utils/shopOrder');
 
 const router = express.Router();
 
@@ -337,6 +340,160 @@ router.get('/locker-packages', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/shop', async (req, res) => {
+  try {
+    const resident = await getResidentContext(req.user);
+    const building = await Building.findById(resident.unitId.buildingId).select(
+      'address.city address.country name'
+    );
+
+    const location = {
+      city: building?.address?.city,
+      country: building?.address?.country,
+    };
+
+    const [categories, products] = await Promise.all([
+      ShopCategory.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }),
+      ShopProduct.find({ isActive: true })
+        .populate('categoryId', 'name slug icon')
+        .sort({ isFeatured: -1, sortOrder: 1, name: 1 }),
+    ]);
+
+    const visibleProducts = products.filter((product) => matchesShopLocation(product, location));
+
+    res.json({
+      location,
+      categories: categories.filter((category) =>
+        visibleProducts.some(
+          (product) => String(product.categoryId?._id || product.categoryId) === String(category._id)
+        )
+      ),
+      products: visibleProducts,
+      featured: visibleProducts.filter((product) => product.isFeatured),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/shop/orders', async (req, res) => {
+  try {
+    const resident = await getResidentContext(req.user);
+    const orders = await ShopOrder.find({ residentId: resident._id })
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    res.json({ orders: orders.map(formatShopOrder) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/shop/orders', async (req, res) => {
+  try {
+    const resident = await getResidentContext(req.user);
+    const { items, notes } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Agrega al menos un producto al pedido' });
+    }
+
+    const [building, unit] = await Promise.all([
+      Building.findById(resident.unitId.buildingId).select('name address.city address.country'),
+      Unit.findById(resident.unitId._id || resident.unitId).select('number tower'),
+    ]);
+
+    const location = {
+      city: building?.address?.city,
+      country: building?.address?.country,
+    };
+
+    const productIds = items.map((item) => item.productId);
+    const products = await ShopProduct.find({
+      _id: { $in: productIds },
+      isActive: true,
+    });
+
+    const productMap = new Map(products.map((product) => [String(product._id), product]));
+    const orderItems = [];
+    let subtotal = 0;
+    let currency = null;
+
+    for (const item of items) {
+      const quantity = Number(item.quantity);
+      if (!item.productId || !Number.isFinite(quantity) || quantity < 1) {
+        return res.status(400).json({ error: 'Cantidad inválida en uno de los productos' });
+      }
+
+      const product = productMap.get(String(item.productId));
+      if (!product) {
+        return res.status(400).json({ error: 'Uno de los productos ya no está disponible' });
+      }
+      if (!matchesShopLocation(product, location)) {
+        return res.status(400).json({ error: `${product.name} no está disponible en tu ciudad` });
+      }
+      if (product.stock === 0) {
+        return res.status(400).json({ error: `${product.name} está agotado` });
+      }
+      if (product.stock != null && quantity > product.stock) {
+        return res.status(400).json({ error: `Stock insuficiente para ${product.name}` });
+      }
+
+      const itemCurrency = product.currency || 'COP';
+      if (!currency) currency = itemCurrency;
+      if (currency !== itemCurrency) {
+        return res.status(400).json({ error: 'No puedes mezclar productos con distinta moneda en un pedido' });
+      }
+
+      const lineTotal = product.price * quantity;
+      subtotal += lineTotal;
+      orderItems.push({
+        productId: product._id,
+        name: product.name,
+        sku: product.sku,
+        imageUrl: product.images?.[0]?.url,
+        quantity,
+        unitPrice: product.price,
+        lineTotal,
+        currency: itemCurrency,
+      });
+    }
+
+    for (const item of orderItems) {
+      const product = productMap.get(String(item.productId));
+      if (product.stock != null) {
+        await ShopProduct.findByIdAndUpdate(product._id, { $inc: { stock: -item.quantity } });
+      }
+    }
+
+    const order = await ShopOrder.create({
+      orderNumber: buildOrderNumber(),
+      residentId: resident._id,
+      userId: req.user._id,
+      organizationId: resident.organizationId,
+      buildingId: resident.unitId.buildingId,
+      unitId: resident.unitId._id || resident.unitId,
+      customerName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+      customerEmail: req.user.email,
+      customerPhone: req.user.phone,
+      buildingName: building?.name,
+      unitNumber: unit?.number,
+      unitTower: unit?.tower,
+      city: location.city,
+      country: location.country,
+      items: orderItems,
+      subtotal,
+      currency,
+      notes: notes?.trim() || undefined,
+      status: 'pending',
+    });
+
+    res.status(201).json({ order: formatShopOrder(order) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

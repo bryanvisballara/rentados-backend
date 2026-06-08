@@ -43,7 +43,7 @@ export function AuthProvider({ children }) {
       user: auth?.user ?? null,
       token: auth?.token ?? null,
       ready,
-      isAuthenticated: Boolean(auth?.token && auth?.user),
+      isAuthenticated: Boolean(auth?.token && (auth?.user || !ready)),
       loginSuccess(data) {
         const session = { token: data.token, user: formatUser(data.user) };
         persistSession(session);

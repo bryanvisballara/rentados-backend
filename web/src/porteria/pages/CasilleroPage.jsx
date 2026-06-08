@@ -57,7 +57,11 @@ export default function CasilleroPage() {
               <div className="porteria-unit-card__head">
                 <div>
                   <h2>
-                    {formatUnitLabel({ number: unit.unitNumber, tower: unit.tower })}
+                    {formatUnitLabel({
+                      number: unit.unitNumber,
+                      code: unit.unitCode,
+                      tower: unit.tower,
+                    })}
                   </h2>
                   <p className="porteria__hint">{unit.count} paquete(s) pendiente(s)</p>
                 </div>

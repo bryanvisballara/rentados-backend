@@ -46,6 +46,7 @@ export const LOGIN_PORTALS = {
     switchPrompt: '¿Buscas otro acceso?',
     switchLinks: [
       { label: 'Portal de residentes', to: '/login' },
+      { label: 'Registrarse como prestador', to: '/provider/register' },
       { label: 'Administración', to: '/admin/login' },
     ],
   },

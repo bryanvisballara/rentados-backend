@@ -21,6 +21,7 @@ const unitSchema = new mongoose.Schema(
       default: null,
     },
     number: { type: String, required: true, trim: true },
+    code: { type: String, trim: true },
     tower: { type: String, trim: true },
     floor: { type: Number },
     type: {
@@ -41,5 +42,6 @@ const unitSchema = new mongoose.Schema(
 );
 
 unitSchema.index({ buildingId: 1, number: 1, towerId: 1 }, { unique: true });
+unitSchema.index({ buildingId: 1, code: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Unit', unitSchema);

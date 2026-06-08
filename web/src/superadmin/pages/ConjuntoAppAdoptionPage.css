@@ -1,0 +1,75 @@
+.app-adoption-page .admin-page__header h1 {
+  margin-top: 0.35rem;
+}
+
+.app-adoption-back {
+  display: inline-block;
+  margin-bottom: 0.35rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.app-adoption-back:hover {
+  color: var(--color-green);
+}
+
+.app-adoption-summary {
+  margin-bottom: 1rem;
+}
+
+.app-adoption-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0 1.25rem 1rem;
+}
+
+.app-adoption-toolbar input[type='search'] {
+  flex: 1 1 220px;
+  min-width: 180px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.app-adoption-contact {
+  display: block;
+  font-size: 0.8125rem;
+}
+
+.app-adoption-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.app-adoption-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 18, 15, 0.45);
+}
+
+.app-adoption-modal__panel {
+  position: relative;
+  z-index: 1;
+  width: min(640px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+
+.app-adoption-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.app-adoption-suggestion {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.6rem;
+}

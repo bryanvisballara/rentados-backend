@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { formatCop, residentApi } from '../api/client';
 import { getPaymentConceptLabel } from '../admin/paymentConcepts';
 import ResidentBookingsSection from './ResidentBookingsSection';
+import ResidentShopSection from './ResidentShopSection';
 import './ResidentHomePage.css';
 
 const PRICING_LABELS = {
@@ -21,6 +22,8 @@ export default function ResidentHomePage() {
   const [servicesData, setServicesData] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [lockerData, setLockerData] = useState(null);
+  const [shopData, setShopData] = useState(null);
+  const [shopLoading, setShopLoading] = useState(false);
   const [error, setError] = useState('');
 
   async function load() {
@@ -46,6 +49,16 @@ export default function ResidentHomePage() {
   useEffect(() => {
     load().catch((err) => setError(err.message));
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'shop' || shopData || shopLoading) return;
+    setShopLoading(true);
+    residentApi
+      .shop()
+      .then(setShopData)
+      .catch((err) => setError(err.message))
+      .finally(() => setShopLoading(false));
+  }, [tab, shopData, shopLoading]);
 
   function handleLogout() {
     logout();
@@ -103,6 +116,13 @@ export default function ResidentHomePage() {
               {notifications.filter((n) => !n.read).length}
             </span>
           )}
+        </button>
+        <button
+          type="button"
+          className={tab === 'shop' ? 'is-active' : ''}
+          onClick={() => setTab('shop')}
+        >
+          Shop
         </button>
       </nav>
 
@@ -203,6 +223,13 @@ export default function ResidentHomePage() {
       {tab === 'reservas' && servicesData && (
         <ResidentBookingsSection services={servicesData.services} />
       )}
+
+      {tab === 'shop' &&
+        (shopLoading && !shopData ? (
+          <p className="resident__empty">Cargando shop…</p>
+        ) : (
+          <ResidentShopSection shopData={shopData} />
+        ))}
 
       {tab === 'avisos' && (
         <section className="resident__section">

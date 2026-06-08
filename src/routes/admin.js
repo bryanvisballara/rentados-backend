@@ -21,6 +21,12 @@ const { syncAutoSuspensions } = require('../utils/autoSuspension');
 const { registerPayment } = require('../utils/registerPayment');
 const { getOrgContext, getScopedOrgFilter } = require('../utils/tenantContext');
 const { parseUnitFloor, inferFloorFromUnitNumber } = require('../utils/unitFloor');
+
+function parseUnitCode(value) {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
 const { uploadPublicationMedia } = require('../middleware/uploadPublication');
 const { uploadPublicationFile, deletePublicationMedia } = require('../utils/publicationMedia');
 const mongoose = require('mongoose');
@@ -47,6 +53,31 @@ router.get('/context', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/building', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
+
+    const updates = {};
+    if (req.body.platformCommissionPercent != null) {
+      const value = Number(req.body.platformCommissionPercent);
+      if (!Number.isFinite(value) || value < 0 || value > 100) {
+        return res.status(400).json({ error: 'Porcentaje inválido (0-100)' });
+      }
+      updates.platformCommissionPercent = value;
+    }
+
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ error: 'No hay cambios para guardar' });
+    }
+
+    const updated = await Building.findByIdAndUpdate(building._id, updates, { new: true });
+    res.json({ building: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -219,9 +250,12 @@ router.post('/units', async (req, res) => {
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
     let towerName = req.body.tower;
+    let towerDoc = null;
     if (req.body.towerId && !towerName) {
-      const tower = await Tower.findById(req.body.towerId);
-      towerName = tower?.name;
+      towerDoc = await Tower.findById(req.body.towerId);
+      towerName = towerDoc?.name;
+    } else if (req.body.towerId) {
+      towerDoc = await Tower.findById(req.body.towerId);
     }
 
     const administrationFee =
@@ -229,11 +263,14 @@ router.post('/units', async (req, res) => {
       getBillingSettings(organization).defaultAdministrationFee ??
       undefined;
 
+    const code = parseUnitCode(req.body.code);
+
     const unit = await Unit.create({
       organizationId: building.organizationId,
       buildingId: building._id,
       towerId: req.body.towerId || null,
       number: req.body.number,
+      code: code || undefined,
       tower: towerName,
       floor: req.body.floor,
       type: req.body.type || 'apartment',
@@ -261,10 +298,11 @@ router.post('/units/bulk', async (req, res) => {
     }
 
     let towerName = null;
+    let towerDoc = null;
     if (towerId) {
-      const tower = await Tower.findById(towerId);
-      if (!tower) return res.status(404).json({ error: 'Torre no encontrada' });
-      towerName = tower.name;
+      towerDoc = await Tower.findById(towerId);
+      if (!towerDoc) return res.status(404).json({ error: 'Torre no encontrada' });
+      towerName = towerDoc.name;
     }
 
     const created = [];
@@ -275,13 +313,17 @@ router.post('/units/bulk', async (req, res) => {
       if (!number) continue;
 
       try {
+        const floor = parseUnitFloor(item.floor);
+        const code = parseUnitCode(item.code);
+
         const unit = await Unit.create({
           organizationId: building.organizationId,
           buildingId: building._id,
           towerId: towerId || null,
           tower: towerName || item.tower || undefined,
           number,
-          floor: parseUnitFloor(item.floor),
+          code: code || undefined,
+          floor,
           type: item.type || 'apartment',
           areaSqm: item.areaSqm,
           administrationFee:
@@ -312,15 +354,17 @@ router.post('/units/bulk', async (req, res) => {
 });
 
 function bulkWriteErrorMessage(writeError) {
-  return (
+  const message =
     writeError.errmsg ||
     writeError.err?.errmsg ||
     writeError.err?.message ||
     writeError.message ||
-    (writeError.code === 11000
-      ? 'Número de unidad duplicado en este conjunto'
-      : `Error de base de datos (${writeError.code || 'desconocido'})`)
-  );
+    '';
+  if (writeError.code === 11000) {
+    if (message.includes('code')) return 'Código de unidad duplicado en este conjunto';
+    return 'Número de unidad duplicado en este conjunto';
+  }
+  return message || `Error de base de datos (${writeError.code || 'desconocido'})`;
 }
 
 router.post('/units/replicate-tower', async (req, res) => {
@@ -504,6 +548,7 @@ router.patch('/units/:id', async (req, res) => {
   try {
     const allowed = [
       'number',
+      'code',
       'towerId',
       'tower',
       'floor',
@@ -521,6 +566,9 @@ router.patch('/units/:id', async (req, res) => {
         updates.administrationFee === null || updates.administrationFee === ''
           ? null
           : parseAdministrationFee(updates.administrationFee);
+    }
+    if (updates.code !== undefined) {
+      updates.code = updates.code?.trim() || null;
     }
     const unit = await Unit.findByIdAndUpdate(req.params.id, updates, { new: true }).populate(
       'towerId',

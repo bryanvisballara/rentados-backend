@@ -94,6 +94,7 @@ router.get('/units', async (req, res) => {
       units: units.map((u) => ({
         _id: u._id,
         number: u.number,
+        code: u.code,
         floor: u.floor,
         tower: u.towerId?.name || u.tower,
         towerId: u.towerId?._id || u.towerId,

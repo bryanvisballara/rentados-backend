@@ -1,7 +1,8 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { User } = require('../models');
+const { User, ServiceProvider, ServiceCategory } = require('../models');
 const { signToken, authenticate, formatAuthUser } = require('../middleware/auth');
+const { createUserSession } = require('../utils/userSession');
 
 const router = express.Router();
 
@@ -46,7 +47,15 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ error: 'No tienes acceso al portal de portería' });
     }
 
-    const token = signToken(user);
+    if (portal === 'provider' && user.role === 'PROVIDER') {
+      const provider = await ServiceProvider.findOne({ userId: user._id });
+      if (provider && provider.approvalStatus === 'rejected') {
+        return res.status(403).json({ error: 'Tu solicitud como prestador fue rechazada' });
+      }
+    }
+
+    const { token, jti } = signToken(user);
+    await createUserSession(user, req, jti, portal);
 
     res.json({
       token,
@@ -57,12 +66,82 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.get('/me', authenticate, (req, res) => {
-  const token = signToken(req.user);
+router.get('/me', authenticate, async (req, res) => {
+  const token = req.headers.authorization?.slice(7);
+  if (req.auth?.jti) {
+    const { touchUserSession } = require('../utils/userSession');
+    await touchUserSession(req.auth.jti).catch(() => {});
+  }
+
   res.json({
     token,
     user: formatAuthUser(req.user),
   });
+});
+
+router.post('/register-provider', async (req, res) => {
+  try {
+    const {
+      email,
+      password,
+      firstName,
+      lastName,
+      phone,
+      businessName,
+      description,
+      categoryIds = [],
+    } = req.body;
+
+    if (!email || !password || !firstName || !lastName || !businessName) {
+      return res.status(400).json({
+        error: 'Correo, contraseña, nombre y nombre del negocio son requeridos',
+      });
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existing) return res.status(400).json({ error: 'El correo ya está registrado' });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      email: email.toLowerCase().trim(),
+      passwordHash,
+      firstName,
+      lastName,
+      phone,
+      role: 'PROVIDER',
+    });
+
+    const provider = await ServiceProvider.create({
+      userId: user._id,
+      businessName,
+      description,
+      categoryIds,
+      approvalStatus: 'pending',
+      isVerified: false,
+      isActive: true,
+    });
+
+    const { token, jti } = signToken(user);
+    await createUserSession(user, req, jti, 'provider');
+
+    res.status(201).json({
+      token,
+      user: formatAuthUser(user),
+      provider,
+      message: 'Solicitud enviada. Te contactaremos para la entrevista.',
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/service-categories', async (_req, res) => {
+  try {
+    const categories = await ServiceCategory.find({ isActive: true }).sort({ sortOrder: 1, name: 1 });
+    res.json({ categories });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

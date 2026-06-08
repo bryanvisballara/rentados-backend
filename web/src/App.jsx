@@ -3,7 +3,21 @@ import LoginPage from './pages/LoginPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminLayout from './admin/AdminLayout';
 import SuperAdminLayout from './superadmin/SuperAdminLayout';
+import SuperAdminDashboardPage from './superadmin/pages/DashboardPage';
 import ConjuntosPage from './superadmin/pages/ConjuntosPage';
+import ConjuntoAppAdoptionPage from './superadmin/pages/ConjuntoAppAdoptionPage';
+import ProviderApplicationsPage from './superadmin/pages/ProviderApplicationsPage';
+import ProvidersPage from './superadmin/pages/ProvidersPage';
+import PlatformServicesPage from './superadmin/pages/PlatformServicesPage';
+import PlatformPublicationsPage from './superadmin/pages/PlatformPublicationsPage';
+import ShopPage from './superadmin/pages/ShopPage';
+import ShopOrdersPage from './superadmin/pages/ShopOrdersPage';
+import RestaurantsPage from './superadmin/pages/RestaurantsPage';
+import RestaurantMenuPage from './superadmin/pages/RestaurantMenuPage';
+import RestaurantOrdersPage from './superadmin/pages/RestaurantOrdersPage';
+import ProviderLayout from './provider/ProviderLayout';
+import ProviderHomePage from './provider/pages/ProviderHomePage';
+import ProviderRegisterPage from './provider/pages/ProviderRegisterPage';
 import DashboardPage from './admin/pages/DashboardPage';
 import TowersPage from './admin/pages/TowersPage';
 import FacilitiesPage from './admin/pages/FacilitiesPage';
@@ -35,6 +49,8 @@ export default function App() {
       <Route path="/provider/login" element={<LoginPage portal="provider" />} />
       <Route path="/porteria/login" element={<PorteriaLoginPage />} />
 
+      <Route path="/provider/register" element={<ProviderRegisterPage />} />
+
       <Route
         path="/super-admin"
         element={
@@ -43,7 +59,29 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<ConjuntosPage />} />
+        <Route index element={<SuperAdminDashboardPage />} />
+        <Route path="conjuntos" element={<ConjuntosPage />} />
+        <Route path="conjuntos/:buildingId/adopcion" element={<ConjuntoAppAdoptionPage />} />
+        <Route path="solicitudes-prestadores" element={<ProviderApplicationsPage />} />
+        <Route path="prestadores" element={<ProvidersPage />} />
+        <Route path="servicios" element={<PlatformServicesPage />} />
+        <Route path="publicaciones" element={<PlatformPublicationsPage />} />
+        <Route path="shop" element={<ShopPage />} />
+        <Route path="shop-pedidos" element={<ShopOrdersPage />} />
+        <Route path="restaurantes" element={<RestaurantsPage />} />
+        <Route path="restaurantes/:restaurantId/menu" element={<RestaurantMenuPage />} />
+        <Route path="restaurantes-pedidos" element={<RestaurantOrdersPage />} />
+      </Route>
+
+      <Route
+        path="/provider"
+        element={
+          <ProtectedRoute roles={['PROVIDER']} loginPath="/provider/login">
+            <ProviderLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<ProviderHomePage />} />
       </Route>
 
       <Route
