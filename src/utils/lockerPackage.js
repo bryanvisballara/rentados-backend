@@ -28,32 +28,65 @@ function formatPackage(pkg) {
   };
 }
 
-async function notifyResidentsAboutPackage(pkg, resident, organization) {
-  const userId = resident.userId?._id || resident.userId;
-  if (!userId) return;
-
+async function notifyUnitAboutPackage(pkg, unitId, organization) {
   const body = pkg.comment?.trim()
     ? `Tienes un paquete en portería: ${pkg.comment.trim()}`
     : 'Tienes un paquete esperando en portería. Pasa a recogerlo.';
 
-  await ResidentNotification.create({
-    organizationId: organization._id,
-    userId,
-    residentId: resident._id,
-    unitId: resident.unitId?._id || resident.unitId,
+  const notifications = await notifyUnitResidents({
+    organization,
+    unitId,
     type: 'locker_package',
     title: 'Paquete en casillero',
     body,
     imageUrl: pkg.photoUrl,
     lockerPackageId: pkg._id,
-    read: false,
-    pushSent: false,
   });
 
-  pkg.notificationSent = true;
-  pkg.notificationSentAt = new Date();
-  if (pkg.status === 'held') pkg.status = 'pending_pickup';
-  await pkg.save();
+  if (notifications.length > 0) {
+    pkg.notificationSent = true;
+    pkg.notificationSentAt = new Date();
+    if (pkg.status === 'held') pkg.status = 'pending_pickup';
+    await pkg.save();
+  }
+
+  return notifications;
+}
+
+async function resolvePackageTarget(input, organization, building) {
+  if (input.unitId) {
+    const unit = await Unit.findOne({
+      _id: input.unitId,
+      organizationId: organization._id,
+      buildingId: building._id,
+      isActive: true,
+    });
+
+    if (!unit) throw new Error('Unidad no encontrada');
+
+    const resident = await Resident.findOne({
+      unitId: unit._id,
+      organizationId: organization._id,
+    }).sort({ isPrimary: -1, createdAt: 1 });
+
+    return { unit, resident };
+  }
+
+  if (input.residentId) {
+    const resident = await Resident.findOne({
+      _id: input.residentId,
+      organizationId: organization._id,
+    }).populate('unitId', 'number adminStatus buildingId tower');
+
+    if (!resident) throw new Error('Residente no encontrado');
+    if (resident.unitId?.buildingId?.toString() !== building._id.toString()) {
+      throw new Error('El residente no pertenece a este conjunto');
+    }
+
+    return { unit: resident.unitId, resident };
+  }
+
+  throw new Error('Selecciona la unidad destino');
 }
 
 async function registerLockerPackage(input, context) {
@@ -72,19 +105,8 @@ async function registerLockerPackage(input, context) {
     throw new Error('La foto del paquete es obligatoria');
   }
 
-  const resident = await Resident.findOne({
-    _id: input.residentId,
-    organizationId: organization._id,
-  })
-    .populate('userId', 'firstName lastName email')
-    .populate('unitId', 'number adminStatus buildingId');
-
-  if (!resident) throw new Error('Residente no encontrado');
-  if (resident.unitId?.buildingId?.toString() !== building._id.toString()) {
-    throw new Error('El residente no pertenece a este conjunto');
-  }
-
-  const isOverdue = resident.unitId?.adminStatus === 'overdue';
+  const { unit, resident } = await resolvePackageTarget(input, organization, building);
+  const isOverdue = unit.adminStatus === 'overdue';
 
   if (isOverdue && !settings.receiveWhenOverdue) {
     throw new Error('Este conjunto no recibe paquetes para unidades en mora');
@@ -96,8 +118,8 @@ async function registerLockerPackage(input, context) {
   const pkg = await LockerPackage.create({
     organizationId: organization._id,
     buildingId: building._id,
-    unitId: resident.unitId._id,
-    residentId: resident._id,
+    unitId: unit._id,
+    residentId: resident?._id,
     registeredBy: userId,
     photoUrl,
     cloudinaryPublicId: input.cloudinaryPublicId,
@@ -106,18 +128,20 @@ async function registerLockerPackage(input, context) {
     notificationSent: false,
   });
 
+  let notifiedCount = 0;
   if (shouldNotify) {
-    await notifyResidentsAboutPackage(pkg, resident, organization);
+    const notifications = await notifyUnitAboutPackage(pkg, unit._id, organization);
+    notifiedCount = notifications.length;
   }
 
   const populated = await LockerPackage.findById(pkg._id)
     .populate('registeredBy', 'firstName lastName')
     .populate({ path: 'residentId', populate: { path: 'userId', select: 'firstName lastName email' } })
-    .populate('unitId', 'number adminStatus');
+    .populate('unitId', 'number tower adminStatus');
 
   return {
     package: formatPackage(populated),
-    notified: shouldNotify,
+    notified: notifiedCount > 0,
     heldDueToOverdue: status === 'held',
   };
 }
@@ -137,13 +161,12 @@ async function releaseHeldLockerPackages(unitId, organization) {
     unitId,
     organizationId: organization._id,
     status: 'held',
-  }).populate({ path: 'residentId', populate: { path: 'userId', select: 'firstName lastName email' } });
+  });
 
   let released = 0;
   for (const pkg of held) {
-    if (!pkg.residentId) continue;
-    await notifyResidentsAboutPackage(pkg, pkg.residentId, organization);
-    released += 1;
+    const notifications = await notifyUnitAboutPackage(pkg, unitId, organization);
+    if (notifications.length > 0) released += 1;
   }
 
   return { released };
@@ -188,7 +211,7 @@ async function notifyHeldPackage(packageId, context) {
     organizationId: organization._id,
     buildingId: building._id,
     status: 'held',
-  }).populate({ path: 'residentId', populate: { path: 'userId', select: 'firstName lastName email' } });
+  });
 
   if (!pkg) throw new Error('Paquete no encontrado o ya notificado');
 
@@ -197,7 +220,10 @@ async function notifyHeldPackage(packageId, context) {
     throw new Error('La unidad sigue en mora; no se puede notificar al residente');
   }
 
-  await notifyResidentsAboutPackage(pkg, pkg.residentId, organization);
+  const notifications = await notifyUnitAboutPackage(pkg, pkg.unitId, organization);
+  if (notifications.length === 0) {
+    throw new Error('La unidad no tiene residentes en la app para notificar');
+  }
 
   const populated = await LockerPackage.findById(pkg._id)
     .populate('registeredBy', 'firstName lastName')
@@ -374,11 +400,10 @@ async function sendPorteriaMessage(input, context) {
   const title = input.title?.trim() || 'Aviso de portería';
 
   let unitId = input.unitId;
-  let residentId = input.residentId;
 
-  if (residentId && !unitId) {
+  if (!unitId && input.residentId) {
     const resident = await Resident.findOne({
-      _id: residentId,
+      _id: input.residentId,
       organizationId: organization._id,
     }).populate('unitId', 'buildingId');
 
@@ -389,7 +414,7 @@ async function sendPorteriaMessage(input, context) {
     unitId = resident.unitId._id;
   }
 
-  if (!unitId) throw new Error('Selecciona una unidad o residente');
+  if (!unitId) throw new Error('Selecciona la unidad destino');
 
   const unit = await Unit.findOne({ _id: unitId, buildingId: building._id });
   if (!unit) throw new Error('Unidad no encontrada');
@@ -397,7 +422,6 @@ async function sendPorteriaMessage(input, context) {
   const notifications = await notifyUnitResidents({
     organization,
     unitId,
-    residentId,
     type: 'porteria_message',
     title,
     body: message,

@@ -23,7 +23,6 @@ const lockerPackageSchema = new mongoose.Schema(
     residentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Resident',
-      required: true,
       index: true,
     },
     registeredBy: {

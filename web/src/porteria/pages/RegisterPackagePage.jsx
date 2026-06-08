@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { porteriaApi } from '../../api/client';
-import ResidentSelectField from '../../admin/components/ResidentSelectField';
+import UnitSelectField from '../components/UnitSelectField';
 import '../../admin/admin.css';
 import '../PorteriaHomePage.css';
 
 const emptyForm = {
-  residentId: '',
+  unitId: '',
   comment: '',
   photoUrl: '',
   cloudinaryPublicId: '',
@@ -14,7 +14,7 @@ const emptyForm = {
 export default function RegisterPackagePage() {
   const fileInputRef = useRef(null);
   const [lockerEnabled, setLockerEnabled] = useState(false);
-  const [residents, setResidents] = useState([]);
+  const [units, setUnits] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [photoPreview, setPhotoPreview] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -23,10 +23,10 @@ export default function RegisterPackagePage() {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    Promise.all([porteriaApi.settings(), porteriaApi.residents()])
-      .then(([settingsData, residentsData]) => {
+    Promise.all([porteriaApi.settings(), porteriaApi.units()])
+      .then(([settingsData, unitsData]) => {
         setLockerEnabled(settingsData.locker?.enabled ?? false);
-        setResidents(residentsData.residents || []);
+        setUnits(unitsData.units || []);
       })
       .catch((err) => setError(err.message));
   }, []);
@@ -63,7 +63,7 @@ export default function RegisterPackagePage() {
 
     try {
       const result = await porteriaApi.lockerPackages.create({
-        residentId: form.residentId,
+        unitId: form.unitId,
         comment: form.comment || undefined,
         photoUrl: form.photoUrl,
         cloudinaryPublicId: form.cloudinaryPublicId || undefined,
@@ -72,9 +72,11 @@ export default function RegisterPackagePage() {
       if (result.heldDueToOverdue) {
         setSuccess('Paquete registrado en retención por mora (sin notificar al residente).');
       } else if (result.notified) {
-        setSuccess('Paquete registrado y residente notificado.');
+        setSuccess('Paquete registrado y unidad notificada.');
       } else {
-        setSuccess('Paquete registrado.');
+        setSuccess(
+          'Paquete registrado. La unidad no tiene residentes en la app para notificar.'
+        );
       }
 
       setForm(emptyForm);
@@ -91,7 +93,7 @@ export default function RegisterPackagePage() {
     <div className="porteria-page">
       <header className="porteria-page__header">
         <h1>Registrar paquete</h1>
-        <p>Foto, residente y comentario. El aviso llega al portal del residente.</p>
+        <p>Foto, unidad destino y comentario. El aviso llega a los residentes de esa unidad.</p>
       </header>
 
       {error && <div className="admin-error porteria-page__alert">{error}</div>}
@@ -106,12 +108,13 @@ export default function RegisterPackagePage() {
         <div className="porteria__card">
           <form className="admin-form porteria__form" onSubmit={handleRegister}>
             <label className="admin-unit-picker-field" style={{ gridColumn: '1 / -1' }}>
-              Residente
-              <ResidentSelectField
-                residents={residents}
-                value={form.residentId}
-                onChange={(residentId) => setForm({ ...form, residentId })}
+              Unidad destino
+              <UnitSelectField
+                units={units}
+                value={form.unitId}
+                onChange={(unitId) => setForm({ ...form, unitId })}
                 required
+                placeholder="Seleccionar unidad"
               />
             </label>
 
@@ -147,7 +150,7 @@ export default function RegisterPackagePage() {
               <button
                 type="submit"
                 className="admin-btn"
-                disabled={saving || uploadingPhoto || !form.photoUrl || !form.residentId}
+                disabled={saving || uploadingPhoto || !form.photoUrl || !form.unitId}
               >
                 {saving ? 'Registrando…' : 'Registrar y notificar'}
               </button>
