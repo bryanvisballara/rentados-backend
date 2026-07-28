@@ -321,7 +321,8 @@ export const residentApi = {
     openPortal: (id) => api(`/resident/utilities/accounts/${id}/open-portal`, { method: 'POST' }),
     gmailStatus: () => api('/resident/utilities/gmail'),
     gmailConnect: () => api('/resident/utilities/gmail/connect', { method: 'POST' }),
-    gmailSync: () => api('/resident/utilities/gmail/sync', { method: 'POST' }),
+    gmailSync: (body = {}) =>
+      api('/resident/utilities/gmail/sync', { method: 'POST', body: JSON.stringify(body) }),
     gmailDisconnect: () => api('/resident/utilities/gmail', { method: 'DELETE' }),
     bills: (params = {}) => {
       const q = buildQueryString(params);

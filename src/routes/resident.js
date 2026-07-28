@@ -985,7 +985,8 @@ router.post('/utilities/gmail/connect', async (req, res) => {
 router.post('/utilities/gmail/sync', async (req, res) => {
   try {
     const resident = await getResidentContext(req.user);
-    const result = await syncAirEBillsFromGmail({ user: req.user, resident });
+    const force = Boolean(req.body?.force);
+    const result = await syncAirEBillsFromGmail({ user: req.user, resident, force });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });

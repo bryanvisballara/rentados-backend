@@ -7,6 +7,7 @@ const {
   parseAirEXml,
   parseZipAttachment,
 } = require('./airEBillEmail');
+const { extractTextFromPdfBuffer, normalizeAccountCode } = require('./pdfTextExtract');
 
 const UTILITY_EMAIL_PROVIDERS = [
   {
@@ -63,15 +64,18 @@ const UTILITY_EMAIL_PROVIDERS = [
 function extractContractCode(text) {
   if (!text) return null;
   const patterns = [
-    /(?:n[uú]mero\s+de\s+)?contrato\s*[:#-]?\s*(\d{5,14})/i,
-    /(?:c[oó]digo\s+de\s+usuario|cuenta(?:\s+contrato)?|cliente)\s*[:#-]?\s*(\d{5,14})/i,
-    /\bNIC\s*[:#-]?\s*(\d{5,14})\b/i,
-    /(?:contrato|cuenta|cliente)[_\-](\d{5,14})/i,
+    /(?:n[uú]mero\s+de\s+)?contrato\s*[:#-]?\s*([\d.\s-]{5,20})/i,
+    /(?:c[oó]digo\s+de\s+usuario|c[oó]digo\s+usuario|cuenta(?:\s+contrato)?|cliente|usuario)\s*[:#-]?\s*([\d.\s-]{5,20})/i,
+    /\bNIC\s*[:#-]?\s*([\d.\s-]{5,20})\b/i,
+    /(?:contrato|cuenta|cliente|usuario)[_\-](\d{5,14})/i,
     /factura[_\-]?(\d{5,14})/i,
   ];
   for (const pattern of patterns) {
     const m = String(text).match(pattern);
-    if (m?.[1]) return m[1];
+    if (m?.[1]) {
+      const digits = normalizeAccountCode(m[1]);
+      if (digits.length >= 5 && digits.length <= 14) return digits;
+    }
   }
   return null;
 }
@@ -102,24 +106,13 @@ function extractDueDateFromText(text) {
   return null;
 }
 
-function extractTextFromPdfBuffer(buffer) {
-  if (!buffer?.length) return '';
-  const raw = buffer.toString('latin1');
-  const chunks = [];
-  const paren = [...raw.matchAll(/\(([^)]{3,120})\)/g)];
-  paren.forEach((m) => {
-    const cleaned = m[1].replace(/\\[nrt]/g, ' ').replace(/[^\x20-\x7EÁÉÍÓÚáéíóúñÑ\$.,:\-\d]/g, ' ');
-    if (cleaned.trim()) chunks.push(cleaned);
-  });
-  return chunks.join(' ');
-}
-
-function parseGasesDelCaribeEmail({
+async function parseGasesDelCaribeEmail({
   subject,
   bodyText = '',
   attachmentName,
   attachmentBuffer,
   attachmentMime,
+  pdfText: pdfTextHint = '',
 }) {
   const blob = [subject, bodyText, attachmentName].filter(Boolean).join('\n');
   let accountCode = extractContractCode(blob);
@@ -140,7 +133,7 @@ function parseGasesDelCaribeEmail({
 
   if (isZip && attachmentBuffer?.length) {
     const fromZip = parseZipAttachment(attachmentBuffer);
-    accountCode = fromZip.nic || accountCode;
+    accountCode = normalizeAccountCode(fromZip.nic) || accountCode;
     amount = fromZip.amount || amount;
     dueDate = fromZip.dueDate || dueDate;
     issuedAt = fromZip.issuedAt || issuedAt;
@@ -152,16 +145,19 @@ function parseGasesDelCaribeEmail({
     source = 'zip';
   } else if (name.endsWith('.xml') && attachmentBuffer?.length) {
     const fromXml = parseAirEXml(attachmentBuffer.toString('utf8'));
-    accountCode = fromXml.nic || accountCode;
+    accountCode = normalizeAccountCode(fromXml.nic) || accountCode;
     amount = fromXml.amount || amount;
     dueDate = fromXml.dueDate || dueDate;
     issuedAt = fromXml.issuedAt || issuedAt;
     period = fromXml.period || period;
     source = 'xml';
-  } else if (name.endsWith('.pdf') && attachmentBuffer?.length) {
+  } else if (
+    (name.endsWith('.pdf') || /pdf/i.test(String(attachmentMime || ''))) &&
+    attachmentBuffer?.length
+  ) {
     pdfBuffer = attachmentBuffer;
     pdfFileName = attachmentName;
-    const pdfText = extractTextFromPdfBuffer(attachmentBuffer);
+    const pdfText = pdfTextHint || (await extractTextFromPdfBuffer(attachmentBuffer));
     accountCode = extractContractCode(`${blob}\n${pdfText}`) || accountCode;
     amount = extractAmountFromText(`${blob}\n${pdfText}`) || amount;
     dueDate = extractDueDateFromText(`${blob}\n${pdfText}`) || dueDate;
@@ -171,7 +167,9 @@ function parseGasesDelCaribeEmail({
   if (!externalBillId) {
     externalBillId =
       extractDefrFromSubject(subject) ||
-      (accountCode && amount ? `gdc-${accountCode}-${amount}-${dueDate?.toISOString?.()?.slice(0, 10) || 'na'}` : null);
+      (accountCode && amount
+        ? `gdc-${accountCode}-${amount}-${dueDate?.toISOString?.()?.slice(0, 10) || 'na'}`
+        : null);
   }
 
   return {
@@ -188,15 +186,14 @@ function parseGasesDelCaribeEmail({
   };
 }
 
-function gmailUtilityBillsSearchQuery({ newerThanDays = 120 } = {}) {
-  // Una sola búsqueda amplia; el match por proveedor filtra después.
+function gmailUtilityBillsSearchQuery({ newerThanDays = 180 } = {}) {
+  // Remitentes conocidos; no exige filename:pdf (Gmail a veces no lo indexa igual).
   return [
     '(',
-    'from:(entrega.de.factura.AIR-E@air-e.com OR air-e.com)',
-    'OR from:(gascaribe.com OR gasesdelcaribe.com OR gasesdelcaribe.com.co)',
+    'from:(air-e.com OR gascaribe.com OR gasesdelcaribe.com OR gasesdelcaribe.com.co)',
+    'OR subject:(Air-e OR AIR-E OR DEFR OR gascaribe OR "gases del caribe" OR "Gases del Caribe")',
     ')',
-    '(factura OR Air-e OR AIR-E OR DEFR OR gascaribe OR "gases del caribe" OR gas)',
-    'has:attachment',
+    '(factura OR recibo OR DEFR OR gas OR Air-e OR AIR-E OR gascaribe OR attachment)',
     `newer_than:${newerThanDays}d`,
   ].join(' ');
 }
@@ -207,7 +204,7 @@ function detectUtilityEmailProvider(from, subject, bodyText = '') {
   );
 }
 
-function parseUtilityEmail(provider, ctx) {
+async function parseUtilityEmail(provider, ctx) {
   if (!provider?.parseEmail) return null;
   return provider.parseEmail(ctx);
 }

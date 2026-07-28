@@ -4,6 +4,7 @@ const {
   UtilityBill,
   UtilityPayment,
   ResidentNotification,
+  GmailConnection,
 } = require('../models');
 const { normalizeCity, serviceTypeLabel } = require('./utilityServices');
 
@@ -25,8 +26,9 @@ function billPaymentStatus(bill) {
  * current = al día (verde)
  * on_time = por pagar, aún no vence (amarillo)
  * overdue = en mora (rojo)
+ * unknown = aún no hay factura importada (gris)
  */
-function resolveAccountStatus(pendingBills = []) {
+function resolveAccountStatus(pendingBills = [], { hasAnyBill = false } = {}) {
   const open = pendingBills.filter((b) => ['pending', 'overdue'].includes(billPaymentStatus(b)));
   if (open.some((b) => billPaymentStatus(b) === 'overdue')) {
     return {
@@ -40,6 +42,13 @@ function resolveAccountStatus(pendingBills = []) {
       key: 'on_time',
       label: 'A tiempo',
       tone: 'warning',
+    };
+  }
+  if (!hasAnyBill) {
+    return {
+      key: 'unknown',
+      label: 'Sin factura',
+      tone: 'neutral',
     };
   }
   return {
@@ -108,7 +117,7 @@ function formatAccount(account, { bills = [] } = {}) {
     const db = b.dueDate ? new Date(b.dueDate).getTime() : 0;
     return da - db;
   })[0];
-  const status = resolveAccountStatus(open);
+  const status = resolveAccountStatus(open, { hasAnyBill: related.length > 0 });
   const amountDue = open.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
 
   return {
@@ -124,6 +133,7 @@ function formatAccount(account, { bills = [] } = {}) {
     status,
     amountDue,
     openBillsCount: open.length,
+    billsCount: related.length,
     latestBill: latestOpen ? formatBill(latestOpen) : null,
   };
 }
@@ -323,29 +333,45 @@ async function getAccountDetail(accountId, resident) {
   }).populate('providerId');
   if (!account) throw new Error('Cuenta no encontrada');
 
-  const bills = await UtilityBill.find({
-    accountId: account._id,
-    residentId: resident._id,
-  })
-    .populate('providerId')
-    .sort({ dueDate: -1, createdAt: -1 })
-    .limit(20);
+  const [bills, gmailConnection] = await Promise.all([
+    UtilityBill.find({
+      accountId: account._id,
+      residentId: resident._id,
+    })
+      .populate('providerId')
+      .sort({ dueDate: -1, createdAt: -1 })
+      .limit(20),
+    GmailConnection.findOne({
+      userId: account.userId || resident.userId,
+      isActive: true,
+    }).select('googleEmail lastSyncAt isActive'),
+  ]);
 
   const openBills = bills.filter((b) => ['pending', 'overdue'].includes(billPaymentStatus(b)));
   const formatted = formatAccount(account, { bills });
+  const gmailConnected = Boolean(gmailConnection);
 
   return {
     account: formatted,
     openBills: openBills.map(formatBill),
     recentBills: bills.map(formatBill),
-    lookup: buildProviderLookupHint(account),
+    lookup: buildProviderLookupHint(account, {
+      gmailConnected,
+      googleEmail: gmailConnection?.googleEmail || null,
+    }),
+    gmail: {
+      connected: gmailConnected,
+      googleEmail: gmailConnection?.googleEmail || null,
+      lastSyncAt: gmailConnection?.lastSyncAt || null,
+    },
   };
 }
 
-function buildProviderLookupHint(account) {
+function buildProviderLookupHint(account, { gmailConnected = false, googleEmail = null } = {}) {
   const provider = account.providerId;
   const paymentUrl = provider?.paymentUrl || provider?.websiteUrl || '';
   const slug = provider?.slug || '';
+  const emailHint = googleEmail ? ` (${googleEmail})` : '';
 
   if (slug === 'aire-energia' || /air-?e/i.test(provider?.name || '')) {
     return {
@@ -354,9 +380,11 @@ function buildProviderLookupHint(account) {
       paymentUrl: paymentUrl || 'https://portal.air-e.com/Pagar#/List',
       accountCode: account.accountCode,
       accountCodeLabel: provider?.accountCodeLabel || 'NIC',
-      message:
-        'Además del portal, puedes conectar Gmail para que Rentados lea el correo de factura de Air-e (ZIP/XML/PDF) y te avise con el valor y la fecha de vencimiento.',
-      canAutoFetch: false,
+      message: gmailConnected
+        ? `Gmail ya está conectado${emailHint}. Usa “Buscar facturas ahora” en el Centro de Facturas (o Reintentar importación) para traer el recibo de Air-e. En air-e.com activa factura digital al mismo correo.`
+        : 'Además del portal, conecta Gmail en el Centro de Facturas para que Rentados lea el correo de Air-e (ZIP/XML/PDF) y te avise con el valor y la fecha de vencimiento.',
+      canAutoFetch: gmailConnected,
+      gmailConnected,
     };
   }
 
@@ -367,9 +395,11 @@ function buildProviderLookupHint(account) {
       paymentUrl: paymentUrl || 'https://portal.gascaribe.com',
       accountCode: account.accountCode,
       accountCodeLabel: provider?.accountCodeLabel || 'Código / contrato',
-      message:
-        'Conecta Gmail para detectar facturas de Gases del Caribe. Activa la factura digital en portal.gascaribe.com con el mismo correo.',
-      canAutoFetch: false,
+      message: gmailConnected
+        ? `Gmail ya está conectado${emailHint}. Las facturas de Gases del Caribe se importan desde ese correo: vuelve al inicio y pulsa “Reintentar importación”. En portal.gascaribe.com confirma que la factura digital llega al mismo Gmail.`
+        : 'Conecta Gmail en el Centro de Facturas para detectar facturas de Gases del Caribe. Activa la factura digital en portal.gascaribe.com con el mismo correo.',
+      canAutoFetch: gmailConnected,
+      gmailConnected,
     };
   }
 
@@ -382,8 +412,11 @@ function buildProviderLookupHint(account) {
     message:
       provider?.integrationStatus === 'api'
         ? 'Consultando integración del proveedor…'
-        : 'Este proveedor aún no tiene API conectada. Usa su portal de pagos con tu código guardado.',
-    canAutoFetch: provider?.integrationStatus === 'api',
+        : gmailConnected
+          ? `Gmail ya está conectado${emailHint}. Si este proveedor envía factura por correo, usa “Buscar facturas ahora” en el inicio. También puedes pagar en su portal con tu código guardado.`
+          : 'Este proveedor aún no tiene API conectada. Usa su portal de pagos con tu código guardado, o conecta Gmail en el Centro de Facturas si te envían el recibo por correo.',
+    canAutoFetch: provider?.integrationStatus === 'api' || gmailConnected,
+    gmailConnected,
   };
 }
 

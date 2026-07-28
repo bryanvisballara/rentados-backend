@@ -186,7 +186,10 @@ export default function ResidentPublicServicesPage() {
       if (data.paymentUrl) {
         window.open(data.paymentUrl, '_blank', 'noopener,noreferrer');
       }
-      if (data.message) setSuccess(data.message);
+      // No mostrar “conecta Gmail” como éxito si ya está conectado; el hint va en el detalle.
+      if (data.message && !data.canAutoFetch && !gmail?.connected) {
+        setSuccess(data.message);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -226,21 +229,38 @@ export default function ResidentPublicServicesPage() {
     }
   }
 
-  async function syncGmail() {
+  async function syncGmail(force = false) {
     setBusy(true);
     setError('');
     try {
-      const result = await residentApi.utilities.gmailSync();
+      const result = await residentApi.utilities.gmailSync(force ? { force: true } : {});
       setGmail(result.connection);
       await loadOverview();
+      if (view === 'detail' && detail?.account?.id) {
+        await openAccountDetail(detail.account.id);
+      }
       const created = result.summary?.created || 0;
-      setSuccess(
-        created > 0
-          ? `Centro de Facturas: ${created} nueva(s)${
-              result.summary?.imported?.length ? ` · ${result.summary.imported.join(', ')}` : ''
-            }.`
-          : 'Sin facturas nuevas. Si ya activaste el correo con la empresa, vincula tu código del servicio.'
-      );
+      const scanned = result.summary?.scanned || 0;
+      const errors = result.summary?.errors || [];
+      if (created > 0) {
+        setSuccess(
+          `Centro de Facturas: ${created} nueva(s)${
+            result.summary?.imported?.length ? ` · ${result.summary.imported.join(', ')}` : ''
+          } (revisados ${scanned} correos).`
+        );
+      } else if (errors.length) {
+        const sample = errors
+          .slice(0, 3)
+          .map((e) => e.reason)
+          .join(' · ');
+        setSuccess(
+          `Revisamos ${scanned} correo(s) y no importamos facturas nuevas. Motivo: ${sample}`
+        );
+      } else {
+        setSuccess(
+          `Revisamos ${scanned} correo(s) y no encontramos facturas nuevas. Si el correo está en Gmail, pulsa “Reintentar importación”.`
+        );
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -319,8 +339,16 @@ export default function ResidentPublicServicesPage() {
                     {gmail.pushEnabled ? ' · Push activo' : ''}
                   </p>
                   <div className="resident-util-form" style={{ marginTop: '0.75rem' }}>
-                    <button type="button" disabled={busy} onClick={syncGmail}>
+                    <button type="button" disabled={busy} onClick={() => syncGmail(false)}>
                       {busy ? 'Analizando correo…' : 'Buscar facturas ahora'}
+                    </button>
+                    <button
+                      type="button"
+                      className="resident-util-btn-secondary"
+                      disabled={busy}
+                      onClick={() => syncGmail(true)}
+                    >
+                      Reintentar importación
                     </button>
                     <button
                       type="button"
@@ -338,6 +366,21 @@ export default function ResidentPublicServicesPage() {
                       ¿No te llegan correos de factura?
                     </button>
                   </div>
+                  {gmail.lastSyncSummary?.errors?.length > 0 && (
+                    <ul className="resident-util-meta" style={{ marginTop: '0.75rem' }}>
+                      {gmail.lastSyncSummary.errors.slice(0, 5).map((item, idx) => (
+                        <li key={`${item.messageId || idx}-${item.reason}`}>
+                          {item.reason}
+                          {item.subject ? ` · ${item.subject}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {gmail.lastSyncError && !gmail.lastSyncSummary?.errors?.length && (
+                    <p className="resident-util-hint" style={{ marginTop: '0.5rem' }}>
+                      Último detalle: {gmail.lastSyncError}
+                    </p>
+                  )}
                 </>
               ) : (
                 <div className="resident-util-form">
@@ -496,11 +539,13 @@ export default function ResidentPublicServicesPage() {
                 {detail.account.amountDue > 0 ? money(detail.account.amountDue) : money(0)}
               </strong>
               <span>
-                {detail.account.status?.key === 'current'
-                  ? 'No tienes facturas pendientes registradas.'
-                  : detail.account.latestBill?.dueDate
-                    ? `Vence ${formatDate(detail.account.latestBill.dueDate)}`
-                    : 'Factura pendiente'}
+                {detail.account.status?.key === 'unknown'
+                  ? 'Aún no hemos importado una factura de este servicio.'
+                  : detail.account.status?.key === 'current'
+                    ? 'No tienes facturas pendientes registradas.'
+                    : detail.account.latestBill?.dueDate
+                      ? `Vence ${formatDate(detail.account.latestBill.dueDate)}`
+                      : 'Factura pendiente'}
               </span>
             </div>
 
@@ -530,7 +575,7 @@ export default function ResidentPublicServicesPage() {
                       href={bill.documentUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      download={bill.documentFileName || 'factura-aire.pdf'}
+                      download={bill.documentFileName || 'factura.pdf'}
                     >
                       Descargar PDF
                     </a>
@@ -548,6 +593,11 @@ export default function ResidentPublicServicesPage() {
             ))}
 
             <div className="resident-util-form" style={{ marginTop: '1rem' }}>
+              {(gmail?.connected || detail.gmail?.connected || detail.lookup?.gmailConnected) && (
+                <button type="button" disabled={busy} onClick={() => syncGmail(true)}>
+                  {busy ? 'Buscando en Gmail…' : 'Buscar factura en Gmail'}
+                </button>
+              )}
               <button
                 type="button"
                 disabled={busy}
@@ -583,6 +633,13 @@ export default function ResidentPublicServicesPage() {
 
             {detail.lookup?.message && (
               <p className="resident-util-hint">{detail.lookup.message}</p>
+            )}
+            {!gmail?.connected && !detail.gmail?.connected && !detail.lookup?.gmailConnected && (
+              <div className="resident-util-form" style={{ marginTop: '0.75rem' }}>
+                <button type="button" disabled={busy} onClick={connectGmail}>
+                  Conectar Gmail
+                </button>
+              </div>
             )}
           </section>
         )}

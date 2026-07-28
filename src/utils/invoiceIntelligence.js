@@ -6,7 +6,13 @@ const {
   extractContractCode,
   extractAmountFromText,
   extractDueDateFromText,
+  gmailUtilityBillsSearchQuery,
 } = require('./utilityEmailProviders');
+const {
+  extractTextFromPdfBuffer,
+  normalizeAccountCode,
+  accountCodesMatch,
+} = require('./pdfTextExtract');
 
 const COMPANY_ALIASES = [
   { slug: 'aire-energia', keywords: ['air-e', 'air e', 'aire energia', 'aire'] },
@@ -28,21 +34,6 @@ function isAiInvoiceConfigured() {
   return Boolean(String(process.env.OPENAI_API_KEY || '').trim());
 }
 
-function extractTextFromPdfBuffer(buffer) {
-  if (!buffer?.length) return '';
-  const raw = buffer.toString('latin1');
-  const chunks = [];
-  for (const m of raw.matchAll(/\(([^)]{3,160})\)/g)) {
-    const cleaned = m[1]
-      .replace(/\\[nrt]/g, ' ')
-      .replace(/[^\x20-\x7EÁÉÍÓÚÜáéíóúüñÑ\$.,:\-\/%\d]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (cleaned.length >= 3) chunks.push(cleaned);
-  }
-  return chunks.join('\n').slice(0, 12000);
-}
-
 function looksLikeInvoice({ from = '', subject = '', bodyText = '', fileName = '' } = {}) {
   const blob = `${from}\n${subject}\n${bodyText}\n${fileName}`;
   if (detectUtilityEmailProvider(from, subject, bodyText)) return true;
@@ -59,7 +50,6 @@ function resolveProviderSlugFromCompany(companyName = '') {
     .trim();
   if (!normalized) return null;
 
-  // Prefer longer/more specific aliases first
   const ranked = [...COMPANY_ALIASES].sort(
     (a, b) =>
       Math.max(...b.keywords.map((k) => k.length)) - Math.max(...a.keywords.map((k) => k.length))
@@ -77,17 +67,38 @@ function resolveProviderSlugFromCompany(companyName = '') {
   return null;
 }
 
-function gmailSmartInvoiceSearchQuery({ newerThanDays = 90 } = {}) {
+function findLinkedAccountCodeInText(text, linkedAccounts = []) {
+  const digits = normalizeAccountCode(text);
+  if (!digits) return null;
+  for (const account of linkedAccounts) {
+    const code = normalizeAccountCode(account.accountCode);
+    if (code && code.length >= 5 && digits.includes(code)) {
+      return String(account.accountCode).replace(/\D/g, '') || code;
+    }
+  }
+  return null;
+}
+
+function gmailSmartInvoiceSearchQuery({ newerThanDays = 180 } = {}) {
   return [
+    '(',
     'has:attachment',
-    '(filename:pdf OR filename:zip OR filename:xml)',
+    'OR from:(air-e.com OR gascaribe.com OR gasesdelcaribe.com OR gasesdelcaribe.com.co)',
+    ')',
     '(',
     'factura OR recibo OR invoice OR "total a pagar" OR vencimiento OR DEFR',
     'OR air-e OR aire OR gascaribe OR "gases del caribe" OR "triple a" OR aaa',
-    'OR claro OR movistar OR tigo OR ruitoque OR administracion OR seguro',
+    'OR claro OR movistar OR tigo OR ruitoque',
     ')',
     `newer_than:${newerThanDays}d`,
   ].join(' ');
+}
+
+function gmailInvoiceSearchQueries({ newerThanDays = 180 } = {}) {
+  return [
+    gmailSmartInvoiceSearchQuery({ newerThanDays }),
+    gmailUtilityBillsSearchQuery({ newerThanDays }),
+  ];
 }
 
 async function analyzeInvoiceWithAi({
@@ -190,14 +201,15 @@ ${String(pdfText || '').slice(0, 8000)}
   };
 }
 
-function heuristicInvoiceExtract({ subject, bodyText, fileName, pdfText }) {
+function heuristicInvoiceExtract({ subject, bodyText, fileName, pdfText, linkedAccounts = [] }) {
   const blob = [subject, bodyText, fileName, pdfText].filter(Boolean).join('\n');
+  const linkedCode = findLinkedAccountCodeInText(blob, linkedAccounts);
   return {
-    isInvoice: looksLikeInvoice({ subject, bodyText, fileName }),
-    confidence: 0.45,
+    isInvoice: looksLikeInvoice({ subject, bodyText, fileName }) || Boolean(linkedCode),
+    confidence: linkedCode ? 0.55 : 0.45,
     companyName: null,
     providerSlug: null,
-    accountCode: extractContractCode(blob),
+    accountCode: linkedCode || extractContractCode(blob),
     amount: extractAmountFromText(blob),
     dueDate: extractDueDateFromText(blob),
     issuedAt: null,
@@ -225,58 +237,32 @@ async function analyzeInvoiceCandidate(ctx) {
     linkedAccounts = [],
   } = ctx;
 
-  const knownProvider = detectUtilityEmailProvider(from, subject, bodyText);
-  if (knownProvider) {
-    const known = parseUtilityEmail(knownProvider, {
-      subject,
-      bodyText,
-      attachmentName: fileName,
-      attachmentBuffer,
-      attachmentMime,
-    });
-    if (known?.amount && (known.accountCode || known.nic)) {
-      return {
-        isInvoice: true,
-        confidence: 0.92,
-        companyName: knownProvider.label,
-        providerSlug: known.providerSlug || knownProvider.slug,
-        accountCode: known.accountCode || known.nic,
-        amount: known.amount,
-        dueDate: known.dueDate,
-        issuedAt: known.issuedAt,
-        period: known.period,
-        externalBillId: known.externalBillId || known.defr || known.idCobro,
-        pdfBuffer: known.pdfBuffer || null,
-        pdfFileName: known.pdfFileName || fileName,
-        notes: `Parser especializado ${knownProvider.label}`,
-        source: 'provider_parser',
-        raw: known.raw,
-      };
-    }
-  }
-
   let pdfBuffer = null;
   let pdfFileName = fileName;
   let pdfText = '';
   const name = String(fileName || '').toLowerCase();
-  if (name.endsWith('.pdf') && attachmentBuffer?.length) {
+  const mime = String(attachmentMime || '').toLowerCase();
+
+  if ((name.endsWith('.pdf') || mime.includes('pdf')) && attachmentBuffer?.length) {
     pdfBuffer = attachmentBuffer;
-    pdfText = extractTextFromPdfBuffer(attachmentBuffer);
-  } else if (name.endsWith('.zip') && attachmentBuffer?.length) {
-    // Reuse known zip parse path via Air-e util if possible
+    pdfText = await extractTextFromPdfBuffer(attachmentBuffer);
+  } else if (
+    (name.endsWith('.zip') || mime.includes('zip')) &&
+    attachmentBuffer?.length
+  ) {
     try {
       const { parseZipAttachment } = require('./airEBillEmail');
       const zip = parseZipAttachment(attachmentBuffer);
       pdfBuffer = zip.pdfBuffer;
       pdfFileName = zip.pdfFileName || fileName;
-      pdfText = extractTextFromPdfBuffer(zip.pdfBuffer || Buffer.alloc(0));
+      pdfText = await extractTextFromPdfBuffer(zip.pdfBuffer || Buffer.alloc(0));
       if (zip.amount && zip.nic) {
         return {
           isInvoice: true,
           confidence: 0.85,
-          companyName: knownProvider?.label || null,
-          providerSlug: knownProvider?.slug || resolveProviderSlugFromCompany(subject),
-          accountCode: zip.nic,
+          companyName: null,
+          providerSlug: resolveProviderSlugFromCompany(subject) || null,
+          accountCode: normalizeAccountCode(zip.nic) || zip.nic,
           amount: zip.amount,
           dueDate: zip.dueDate,
           issuedAt: zip.issuedAt,
@@ -293,7 +279,53 @@ async function analyzeInvoiceCandidate(ctx) {
     }
   }
 
-  if (!looksLikeInvoice({ from, subject, bodyText, fileName }) && !pdfText) {
+  const knownProvider = detectUtilityEmailProvider(from, subject, bodyText);
+  let partialKnown = null;
+  if (knownProvider) {
+    const known = await parseUtilityEmail(knownProvider, {
+      subject,
+      bodyText,
+      attachmentName: fileName,
+      attachmentBuffer,
+      attachmentMime,
+      pdfText,
+    });
+    if (known?.amount && (known.accountCode || known.nic)) {
+      return {
+        isInvoice: true,
+        confidence: 0.92,
+        companyName: knownProvider.label,
+        providerSlug: known.providerSlug || knownProvider.slug,
+        accountCode: normalizeAccountCode(known.accountCode || known.nic) || known.accountCode,
+        amount: known.amount,
+        dueDate: known.dueDate,
+        issuedAt: known.issuedAt,
+        period: known.period,
+        externalBillId: known.externalBillId || known.defr || known.idCobro,
+        pdfBuffer: known.pdfBuffer || pdfBuffer || null,
+        pdfFileName: known.pdfFileName || pdfFileName,
+        notes: `Parser especializado ${knownProvider.label}`,
+        source: 'provider_parser',
+        raw: known.raw,
+      };
+    }
+    if (known) {
+      partialKnown = {
+        companyName: knownProvider.label,
+        providerSlug: known.providerSlug || knownProvider.slug,
+        accountCode: known.accountCode || known.nic || null,
+        amount: known.amount || null,
+        dueDate: known.dueDate || null,
+        issuedAt: known.issuedAt || null,
+        period: known.period || null,
+        externalBillId: known.externalBillId || known.defr || known.idCobro || null,
+        pdfBuffer: known.pdfBuffer || pdfBuffer,
+        pdfFileName: known.pdfFileName || pdfFileName,
+      };
+    }
+  }
+
+  if (!looksLikeInvoice({ from, subject, bodyText, fileName }) && !pdfText && !knownProvider) {
     return {
       isInvoice: false,
       confidence: 0.1,
@@ -318,28 +350,52 @@ async function analyzeInvoiceCandidate(ctx) {
     }
   }
 
-  const heuristic = heuristicInvoiceExtract({ subject, bodyText, fileName, pdfText });
+  const heuristic = heuristicInvoiceExtract({
+    subject,
+    bodyText,
+    fileName,
+    pdfText,
+    linkedAccounts,
+  });
+
+  let accountCode =
+    aiResult?.accountCode ||
+    partialKnown?.accountCode ||
+    heuristic.accountCode ||
+    findLinkedAccountCodeInText(`${pdfText}\n${bodyText}\n${subject}`, linkedAccounts);
+
+  if (accountCode) accountCode = normalizeAccountCode(accountCode) || accountCode;
+
+  // Si el proveedor es conocido y hay una sola cuenta vinculada de ese proveedor, úsala.
+  if (!accountCode && knownProvider) {
+    const same = linkedAccounts.filter((a) => a.providerSlug === knownProvider.slug);
+    if (same.length === 1) accountCode = normalizeAccountCode(same[0].accountCode);
+  }
+
+  const amount = aiResult?.amount || partialKnown?.amount || heuristic.amount;
   const merged = {
-    ...heuristic,
-    ...(aiResult || {}),
-    isInvoice: aiResult?.isInvoice ?? heuristic.isInvoice,
-    confidence: aiResult?.confidence || heuristic.confidence,
+    isInvoice:
+      Boolean(knownProvider) ||
+      (aiResult?.isInvoice ?? heuristic.isInvoice) ||
+      Boolean(amount && accountCode),
+    confidence: aiResult?.confidence || (partialKnown ? 0.7 : heuristic.confidence),
+    companyName: aiResult?.companyName || partialKnown?.companyName || knownProvider?.label || null,
     providerSlug:
       aiResult?.providerSlug ||
-      heuristic.providerSlug ||
+      partialKnown?.providerSlug ||
       knownProvider?.slug ||
       resolveProviderSlugFromCompany(aiResult?.companyName || subject),
-    accountCode: aiResult?.accountCode || heuristic.accountCode,
-    amount: aiResult?.amount || heuristic.amount,
-    dueDate: aiResult?.dueDate || heuristic.dueDate,
-    issuedAt: aiResult?.issuedAt || heuristic.issuedAt,
-    period: aiResult?.period || heuristic.period,
-    externalBillId: aiResult?.externalBillId || heuristic.externalBillId,
-    pdfBuffer,
-    pdfFileName,
-    companyName: aiResult?.companyName || knownProvider?.label || null,
-    source: aiResult ? 'ai' : heuristic.source,
-    notes: aiResult?.notes || heuristic.notes,
+    accountCode,
+    amount,
+    dueDate: aiResult?.dueDate || partialKnown?.dueDate || heuristic.dueDate,
+    issuedAt: aiResult?.issuedAt || partialKnown?.issuedAt || heuristic.issuedAt,
+    period: aiResult?.period || partialKnown?.period || heuristic.period,
+    externalBillId:
+      aiResult?.externalBillId || partialKnown?.externalBillId || heuristic.externalBillId,
+    pdfBuffer: partialKnown?.pdfBuffer || pdfBuffer,
+    pdfFileName: partialKnown?.pdfFileName || pdfFileName,
+    source: aiResult ? 'ai' : partialKnown ? 'provider_partial' : heuristic.source,
+    notes: aiResult?.notes || partialKnown?.notes || heuristic.notes,
   };
 
   return merged;
@@ -350,8 +406,11 @@ module.exports = {
   looksLikeInvoice,
   resolveProviderSlugFromCompany,
   gmailSmartInvoiceSearchQuery,
+  gmailInvoiceSearchQueries,
   analyzeInvoiceCandidate,
   analyzeInvoiceWithAi,
   COMPANY_ALIASES,
   UTILITY_EMAIL_PROVIDERS,
+  accountCodesMatch,
+  normalizeAccountCode,
 };
