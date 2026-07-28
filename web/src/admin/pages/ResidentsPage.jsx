@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminApi } from '../../api/client';
+import { formatUnitLabel } from '../../utils/units';
 import '../admin.css';
 
 export default function ResidentsPage() {
@@ -19,7 +20,7 @@ export default function ResidentsPage() {
     <div className="admin-page">
       <header className="admin-page__header">
         <h1>Base de datos de residentes</h1>
-        <p>Consulta clientes por unidad, filtra por estado y revisa su historial.</p>
+        <p>Consulta clientes por código, unidad, nombre o correo y revisa su historial.</p>
       </header>
 
       {error && <div className="admin-error">{error}</div>}
@@ -31,7 +32,7 @@ export default function ResidentsPage() {
             <input
               value={filters.q}
               onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-              placeholder="Nombre o unidad"
+              placeholder="Nombre, código (41201) o unidad"
             />
           </label>
           <label>
@@ -66,7 +67,7 @@ export default function ResidentsPage() {
                 <td>
                   {r.userId?.firstName} {r.userId?.lastName}
                 </td>
-                <td>{r.unitId?.number || '—'}</td>
+                <td>{r.unitId ? formatUnitLabel(r.unitId) : '—'}</td>
                 <td>{r.unitId?.type || '—'}</td>
                 <td>
                   <span className={`admin-badge admin-badge--${r.unitId?.adminStatus}`}>

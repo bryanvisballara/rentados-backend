@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { adminApi } from '../../api/client';
+import { formatUnitLabel, matchUnitQuery, sortUnitsForPicker } from '../../utils/units';
 import '../admin.css';
 
 const emptyResident = {
@@ -36,11 +37,6 @@ const RELATIONSHIP_LABELS = {
   family: 'Familiar',
 };
 
-function formatUnitLabel(unit) {
-  const tower = unit.towerId?.name || unit.tower;
-  return `${unit.number}${tower ? ` · ${tower}` : ''} (${unit.type})`;
-}
-
 function UnitSelectField({
   units,
   towers,
@@ -55,19 +51,19 @@ function UnitSelectField({
   const [query, setQuery] = useState('');
 
   const filteredUnits = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return units.filter((unit) => {
       const towerName = unit.towerId?.name || unit.tower || '';
       if (towerFilter && towerName !== towerFilter) return false;
-      if (!q) return true;
-      return (
-        String(unit.number).toLowerCase().includes(q) ||
-        towerName.toLowerCase().includes(q)
-      );
+      return matchUnitQuery(unit, query);
     });
   }, [units, towerFilter, query]);
 
-  const valueInList = !value || filteredUnits.some((u) => u._id === value);
+  const sortedUnits = useMemo(
+    () => [...filteredUnits].sort((a, b) => sortUnitsForPicker(a, b, query)),
+    [filteredUnits, query]
+  );
+
+  const valueInList = !value || sortedUnits.some((u) => u._id === value);
 
   return (
     <div className="admin-unit-picker">
@@ -88,30 +84,30 @@ function UnitSelectField({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar número o torre"
+          placeholder="Buscar código (41201), número o torre"
           aria-label="Buscar unidad"
         />
       </div>
       <p className="admin-unit-picker__meta">
-        {filteredUnits.length} de {units.length} unidad(es)
+        {sortedUnits.length} de {units.length} unidad(es)
         {value && !valueInList ? ' · selección fuera del filtro actual' : ''}
       </p>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required && !allowEmpty}
-        size={Math.min(Math.max(filteredUnits.length + (allowEmpty ? 1 : 0), 4), 8)}
+        size={Math.min(Math.max(sortedUnits.length + (allowEmpty ? 1 : 0), 4), 8)}
         className="admin-unit-picker__list"
       >
         {allowEmpty && <option value="">{emptyLabel}</option>}
         {!allowEmpty && <option value="">{placeholder}</option>}
-        {filteredUnits.map((unit) => (
+        {sortedUnits.map((unit) => (
           <option key={unit._id} value={unit._id}>
-            {formatUnitLabel(unit)}
+            {formatUnitLabel(unit)} ({unit.type})
           </option>
         ))}
       </select>
-      {filteredUnits.length === 0 && (
+      {sortedUnits.length === 0 && (
         <p className="admin-unit-picker__empty">No hay unidades con ese filtro.</p>
       )}
     </div>
@@ -284,7 +280,7 @@ export default function ResidentAssignPage() {
             <input
               value={filters.q}
               onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-              placeholder="Nombre, correo o unidad"
+              placeholder="Nombre, correo, código (41201) o unidad"
             />
           </label>
           <label className="admin-unit-picker-field">

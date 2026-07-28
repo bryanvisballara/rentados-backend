@@ -34,6 +34,10 @@ const organizationSchema = new mongoose.Schema(
         receiveWhenOverdue: { type: Boolean, default: true },
         notifyWhenOverdue: { type: Boolean, default: true },
       },
+      contacts: {
+        receptionWhatsapp: { type: String, trim: true, default: '' },
+        adminWhatsapp: { type: String, trim: true, default: '' },
+      },
     },
   },
   { timestamps: true }

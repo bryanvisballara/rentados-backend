@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import FacilityCalendar, { addDays, startOfWeek } from '../../components/FacilityCalendar';
-import { adminApi, formatCop } from '../../api/client';
+import { adminApi, formatCop, formatDateTime } from '../../api/client';
 import ResidentSelectField from '../components/ResidentSelectField';
 import { formatOpenHoursRange } from '../../utils/openHours';
 import '../admin.css';
@@ -283,8 +283,8 @@ export default function FacilityBookingsPage() {
           <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
             <h2>{modal.event.title}</h2>
             <p>
-              {new Date(modal.event.startAt).toLocaleString()} –{' '}
-              {new Date(modal.event.endAt).toLocaleString()}
+              {formatDateTime(modal.event.startAt)} –{' '}
+              {formatDateTime(modal.event.endAt)}
             </p>
             <p>
               Estado: <strong>{modal.event.status}</strong>

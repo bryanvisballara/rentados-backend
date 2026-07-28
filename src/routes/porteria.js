@@ -20,6 +20,11 @@ const {
   registerVisitorEntry,
   registerVisitorExit,
 } = require('../utils/visitorParking');
+const {
+  registerApartmentVisit,
+  exitApartmentVisit,
+  listApartmentVisits,
+} = require('../utils/apartmentVisit');
 
 const router = express.Router();
 
@@ -76,7 +81,7 @@ router.get('/units', async (req, res) => {
       type: { $in: ['apartment', 'house', 'commercial'] },
     })
       .populate('towerId', 'name code')
-      .sort({ tower: 1, number: 1 });
+      .sort({ floor: 1, number: 1 });
     const packageCounts = await LockerPackage.aggregate([
       {
         $match: {
@@ -88,19 +93,27 @@ router.get('/units', async (req, res) => {
       { $group: { _id: '$unitId', count: { $sum: 1 } } },
     ]);
 
+    const settings = getLockerSettings(organization);
     const countMap = Object.fromEntries(packageCounts.map((row) => [row._id.toString(), row.count]));
 
     res.json({
-      units: units.map((u) => ({
-        _id: u._id,
-        number: u.number,
-        code: u.code,
-        floor: u.floor,
-        tower: u.towerId?.name || u.tower,
-        towerId: u.towerId?._id || u.towerId,
-        adminStatus: u.adminStatus,
-        pendingPackages: countMap[u._id.toString()] || 0,
-      })),
+      locker: settings,
+      units: units.map((u) => {
+        const isOverdue = u.adminStatus === 'overdue';
+        const canReceivePackages =
+          settings.enabled && (!isOverdue || settings.receiveWhenOverdue);
+        return {
+          _id: u._id,
+          number: u.number,
+          code: u.code,
+          floor: u.floor,
+          tower: u.towerId?.name || u.tower,
+          towerId: u.towerId?._id || u.towerId,
+          adminStatus: u.adminStatus,
+          pendingPackages: countMap[u._id.toString()] || 0,
+          canReceivePackages,
+        };
+      }),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -153,7 +166,7 @@ router.get('/locker-packages', async (req, res) => {
       .populate('registeredBy', 'firstName lastName')
       .populate('pickedUpBy', 'firstName lastName')
       .populate({ path: 'residentId', populate: { path: 'userId', select: 'firstName lastName email' } })
-      .populate('unitId', 'number tower adminStatus')
+      .populate('unitId', 'number tower adminStatus code')
       .sort({ createdAt: -1 })
       .limit(status === 'all' ? 200 : 100);
 
@@ -258,9 +271,69 @@ router.get('/bitacora', async (req, res) => {
       limit: Number(req.query.limit) || 100,
     });
 
-    res.json({ entries });
+    const kind = req.query.kind;
+    const filtered =
+      kind === 'package' || kind === 'visitor'
+        ? entries.filter((entry) => entry.kind === kind)
+        : entries;
+
+    res.json({ entries: filtered });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/apartment-visits', async (req, res) => {
+  try {
+    const { organization, building } = await getOrgContext(req.user, req);
+    if (!organization || !building) return res.json({ visits: [] });
+
+    const visits = await listApartmentVisits(building._id, organization._id, {
+      unitId: req.query.unitId,
+      status: req.query.status,
+      q: req.query.q,
+      limit: Number(req.query.limit) || 100,
+    });
+
+    res.json({ visits });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/apartment-visits', async (req, res) => {
+  try {
+    const context = await getOrgContext(req.user, req);
+    if (!context.organization || !context.building) {
+      return res.status(404).json({ error: 'Organización o conjunto no encontrado' });
+    }
+
+    const visit = await registerApartmentVisit(req.body, {
+      ...context,
+      userId: req.user._id,
+    });
+
+    res.status(201).json({ visit });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/apartment-visits/:id/exit', async (req, res) => {
+  try {
+    const context = await getOrgContext(req.user, req);
+    if (!context.organization || !context.building) {
+      return res.status(404).json({ error: 'Organización o conjunto no encontrado' });
+    }
+
+    const visit = await exitApartmentVisit(req.params.id, {
+      ...context,
+      userId: req.user._id,
+    });
+
+    res.json({ visit });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

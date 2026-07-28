@@ -36,30 +36,12 @@ const {
   RestaurantMenuItem,
   RestaurantOrder,
 } = require('../models');
-const { buildUnitCode } = require('../utils/unitCode');
-
-function buildTowerUnitRows(organizationId, buildingId, tower, floorConfigs) {
-  const rows = [];
-  for (const { floor, aptCount } of floorConfigs) {
-    for (let apt = 1; apt <= aptCount; apt += 1) {
-      const aptSuffix = String(apt).padStart(2, '0');
-      const number = `${floor}${aptSuffix}`;
-      rows.push({
-        organizationId,
-        buildingId,
-        towerId: tower._id,
-        number,
-        code: buildUnitCode({ towerCode: tower.code, floor, number }),
-        tower: tower.name,
-        floor,
-        type: 'apartment',
-        administrationFee: 420000,
-        adminStatus: 'current',
-      });
-    }
-  }
-  return rows;
-}
+const {
+  PARAISO_TOWER_DEFS,
+  PARAISO_TOWER_FLOORS,
+  PARAISO_UNITS_PER_TOWER,
+  buildTowerUnitRows,
+} = require('../utils/towerUnitLayout');
 
 const SERVICE_CATEGORIES = [
   { name: 'Plomería', slug: 'plomeria', description: 'Reparaciones e instalaciones hidráulicas', icon: 'wrench', sortOrder: 1 },
@@ -76,19 +58,9 @@ const SHOP_CATEGORIES = [
   { name: 'Baño', slug: 'bano', description: 'Accesorios y cuidado del baño', icon: 'bath', sortOrder: 4 },
 ];
 
-/** Paraíso Caribe: 3 torres · 12 pisos × 13 aptos = 156 por torre · 468 apartamentos + 1 casa. */
-const DEMO_TOWER_COUNT = 3;
-const DEMO_TOWER_FLOORS = Array.from({ length: 12 }, (_, index) => ({
-  floor: index + 1,
-  aptCount: 13,
-}));
-
-const DEMO_TOWER_DEFS = Array.from({ length: DEMO_TOWER_COUNT }, (_, index) => ({
-  name: `Torre ${index + 1}`,
-  code: String(index + 1),
-  floors: 12,
-  sortOrder: index + 1,
-}));
+/** Paraíso Caribe: 10 torres · 45 aptos/torre (piso 1: 101; pisos 2–12: 4) + 1 casa. */
+const DEMO_TOWER_DEFS = PARAISO_TOWER_DEFS;
+const DEMO_TOWER_FLOORS = PARAISO_TOWER_FLOORS;
 
 async function runSeed() {
   await connectDB();
@@ -101,7 +73,6 @@ async function runSeed() {
     Tower.deleteMany({}),
     Unit.deleteMany({}),
     Resident.deleteMany({}),
-    ServiceCategory.deleteMany({}),
     ServiceProvider.deleteMany({}),
     Service.deleteMany({}),
     Facility.deleteMany({}),
@@ -165,6 +136,10 @@ async function runSeed() {
         receiveWhenOverdue: true,
         notifyWhenOverdue: true,
       },
+      contacts: {
+        receptionWhatsapp: '573001234567',
+        adminWhatsapp: '573109876543',
+      },
     },
   });
 
@@ -173,13 +148,13 @@ async function runSeed() {
     name: 'Conjunto Paraíso Caribe',
     slug: 'paraiso-caribe',
     address: {
-      street: 'Conjunto Paraíso Caribe',
-      city: 'Cartagena',
-      state: 'Bolívar',
+      street: 'Cra 75 # 78-54',
+      city: 'Barranquilla',
+      state: 'Atlántico',
       country: 'Colombia',
     },
     heroImageUrl: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1200',
-    description: 'Conjunto residencial frente al mar',
+    description: 'Conjunto residencial en Barranquilla',
     towers: DEMO_TOWER_DEFS.map((tower) => tower.name),
   });
 
@@ -221,7 +196,7 @@ async function runSeed() {
   ]);
 
   const residentUnit = units.find((u) => u.code === '1101');
-  const overdueUnit = units.find((u) => u.code === '11203');
+  const overdueUnit = units.find((u) => u.code === '11203'); // Torre 1, apto 1203
   const houseUnit = units.find((u) => u.number === 'Casa 12');
 
   if (overdueUnit) {
@@ -326,7 +301,17 @@ async function runSeed() {
     createdBy: orgAdmin._id,
   });
 
-  const categories = await ServiceCategory.insertMany(SERVICE_CATEGORIES);
+  for (const def of SERVICE_CATEGORIES) {
+    await ServiceCategory.findOneAndUpdate(
+      { slug: def.slug },
+      { $set: { ...def, isActive: true } },
+      { upsert: true, setDefaultsOnInsert: true }
+    );
+  }
+
+  const categories = await ServiceCategory.find({
+    slug: { $in: SERVICE_CATEGORIES.map((item) => item.slug) },
+  });
   const categoryBySlug = Object.fromEntries(categories.map((c) => [c.slug, c]));
 
   const providerUser = await User.create({
@@ -974,7 +959,7 @@ async function runSeed() {
     },
   ]);
 
-  const demoFollowUpUnits = units.filter((unit) => ['1102', '1203'].includes(unit.code));
+  const demoFollowUpUnits = units.filter((unit) => ['1102', '11203'].includes(unit.code));
   if (demoFollowUpUnits.length) {
     await UnitAppFollowUp.insertMany(
       demoFollowUpUnits.map((unit, index) => ({

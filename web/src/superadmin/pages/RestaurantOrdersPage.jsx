@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { formatMoney, platformApi } from '../../api/client';
+import { formatDateTime, formatMoney, platformApi } from '../../api/client';
 import '../../admin/admin.css';
 import './ShopPage.css';
 
@@ -144,7 +144,7 @@ export default function RestaurantOrdersPage() {
                         {order.orderNumber}
                       </button>
                       <span className="shop-order-meta">
-                        {new Date(order.createdAt).toLocaleString('es-CO')}
+                        {formatDateTime(order.createdAt)}
                       </span>
                     </td>
                     <td>{order.restaurantName}</td>

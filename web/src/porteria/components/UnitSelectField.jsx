@@ -1,19 +1,35 @@
 import { useMemo, useState } from 'react';
 import { formatUnitLabel, matchUnitQuery, sortUnitsForPicker } from '../../utils/units';
 
+function unitOptionLabel(unit, { showReceiveHint = false } = {}) {
+  const base = formatUnitLabel(unit);
+  const parts = [];
+  if (unit.pendingPackages) parts.push(`${unit.pendingPackages} paq.`);
+  if (unit.adminStatus === 'overdue') parts.push('Mora');
+  if (showReceiveHint && unit.canReceivePackages === false) parts.push('No recibe paquetes');
+  return parts.length ? `${base} · ${parts.join(' · ')}` : base;
+}
+
 export default function UnitSelectField({
   units,
   value,
   onChange,
   required = false,
   placeholder = 'Seleccionar unidad',
+  showReceiveHint = false,
+  onlyReceivable = false,
 }) {
   const [query, setQuery] = useState('');
 
+  const sourceUnits = useMemo(() => {
+    if (!onlyReceivable) return units;
+    return units.filter((unit) => unit.canReceivePackages !== false);
+  }, [units, onlyReceivable]);
+
   const filteredUnits = useMemo(() => {
-    if (!query.trim()) return units;
-    return units.filter((unit) => matchUnitQuery(unit, query));
-  }, [units, query]);
+    if (!query.trim()) return sourceUnits;
+    return sourceUnits.filter((unit) => matchUnitQuery(unit, query));
+  }, [sourceUnits, query]);
 
   const sortedUnits = useMemo(
     () => [...filteredUnits].sort((a, b) => sortUnitsForPicker(a, b, query)),
@@ -31,7 +47,7 @@ export default function UnitSelectField({
         className="admin-unit-picker__search"
       />
       <p className="admin-unit-picker__meta">
-        {sortedUnits.length} de {units.length} unidad(es)
+        {sortedUnits.length} de {sourceUnits.length} unidad(es)
       </p>
       <select
         value={value}
@@ -42,9 +58,8 @@ export default function UnitSelectField({
       >
         <option value="">{placeholder}</option>
         {sortedUnits.map((unit) => (
-          <option key={unit._id} value={unit._id}>
-            {formatUnitLabel(unit)}
-            {unit.pendingPackages ? ` · ${unit.pendingPackages} paq.` : ''}
+          <option key={unit._id} value={unit._id} disabled={showReceiveHint && unit.canReceivePackages === false}>
+            {unitOptionLabel(unit, { showReceiveHint })}
           </option>
         ))}
       </select>

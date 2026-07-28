@@ -21,6 +21,13 @@
   font-size: 0.9375rem;
 }
 
+.admin-page__header-meta {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-green);
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -169,6 +176,27 @@
 
 .admin-form__row--4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-form__row--season-hours {
+  grid-column: 1 / -1;
+  align-items: start;
+}
+
+.admin-form__row--season-hours > label {
+  min-width: 0;
+}
+
+.admin-form__row--season-hours .admin-time-select {
+  min-height: 2.65rem;
+}
+
+.admin-form__row--season-hours .admin-time-select select {
+  padding: 0.7rem 0.55rem;
+}
+
+.admin-form__row--season-hours .admin-field-hint {
+  min-height: 2.1rem;
 }
 
 @media (max-width: 720px) {

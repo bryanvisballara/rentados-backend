@@ -2,7 +2,7 @@ export const LOGIN_PORTALS = {
   resident: {
     id: 'resident',
     title: 'Hola, bienvenido',
-    subtitle: 'Accede y paga tu administración, tus servicios públicos, reservas y novedades de tu conjunto.',
+    subtitle: 'Elige tu país y conjunto, luego accede con tu código de apto o correo.',
     heroTagline: 'Tu conjunto, simplificado',
     submitLabel: 'Iniciar sesión',
     switchPrompt: '¿Acceso corporativo?',

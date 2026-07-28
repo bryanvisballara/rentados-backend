@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { platformApi } from '../../api/client';
+import { formatDateTime, platformApi } from '../../api/client';
 import '../../admin/admin.css';
 
 const emptyInterview = { scheduledAt: '', location: '', notes: '' };
@@ -155,7 +155,7 @@ export default function ProviderApplicationsPage() {
                   <td>
                     {(app.categoryIds || []).map((c) => c.name).join(', ') || '—'}
                   </td>
-                  <td>{new Date(app.createdAt).toLocaleString()}</td>
+                  <td>{formatDateTime(app.createdAt)}</td>
                   <td className="admin-actions">
                     <button type="button" className="admin-btn" onClick={() => approve(app._id)}>
                       Aprobar

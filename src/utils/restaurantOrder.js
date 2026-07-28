@@ -1,10 +1,7 @@
+const { getColombiaDateStamp } = require('./dateTime');
+
 function buildRestaurantOrderNumber() {
-  const now = new Date();
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('');
+  const stamp = getColombiaDateStamp();
   const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `RS-${stamp}-${suffix}`;
 }

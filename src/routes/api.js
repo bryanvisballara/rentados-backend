@@ -7,6 +7,7 @@ const porteriaRoutes = require('./porteria');
 
 const platformRoutes = require('./platform');
 const providerRoutes = require('./provider');
+const webhookRoutes = require('./webhooks');
 
 const router = express.Router();
 
@@ -17,5 +18,6 @@ router.use('/admin', adminRoutes);
 router.use('/deploy', deployRoutes);
 router.use('/resident', residentRoutes);
 router.use('/porteria', porteriaRoutes);
+router.use('/webhooks', webhookRoutes);
 
 module.exports = router;

@@ -17,6 +17,7 @@ function formatPackage(pkg) {
       ? `${resident.userId.firstName || ''} ${resident.userId.lastName || ''}`.trim()
       : undefined,
     unitNumber: unit?.number,
+    unitCode: unit?.code,
     unitTower: unit?.tower,
     unitAdminStatus: unit?.adminStatus,
     registeredByName: registeredBy

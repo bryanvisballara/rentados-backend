@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { porteriaApi } from '../../api/client';
+import { formatDateTime, porteriaApi } from '../../api/client';
 import SignaturePad from '../components/SignaturePad';
 import UnitSelectField from '../components/UnitSelectField';
 import '../../admin/admin.css';
@@ -122,7 +122,7 @@ export default function BitacoraPage() {
                 <option value="">Seleccionar paquete</option>
                 {packages.map((pkg) => (
                   <option key={pkg._id} value={pkg._id}>
-                    {new Date(pkg.createdAt).toLocaleString()} · {pkg.comment || 'Sin descripción'} ·{' '}
+                    {formatDateTime(pkg.createdAt)} · {pkg.comment || 'Sin descripción'} ·{' '}
                     {pkg.status === 'held' ? 'Retención' : 'Pendiente'}
                   </option>
                 ))}
@@ -208,9 +208,9 @@ export default function BitacoraPage() {
                   </td>
                   <td>{entry.description}</td>
                   <td>{entry.receivedBy || '—'}</td>
-                  <td>{entry.receivedAt ? new Date(entry.receivedAt).toLocaleString() : '—'}</td>
+                  <td>{entry.receivedAt ? formatDateTime(entry.receivedAt) : '—'}</td>
                   <td>{entry.deliveredBy || '—'}</td>
-                  <td>{entry.deliveredAt ? new Date(entry.deliveredAt).toLocaleString() : '—'}</td>
+                  <td>{entry.deliveredAt ? formatDateTime(entry.deliveredAt) : '—'}</td>
                   <td>{entry.signatureRecipientName || '—'}</td>
                 </tr>
               ))}

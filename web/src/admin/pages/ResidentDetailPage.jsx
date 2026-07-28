@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { adminApi, formatCop } from '../../api/client';
+import { adminApi, formatCop, formatDate } from '../../api/client';
 import { getPaymentConceptLabel } from '../paymentConcepts';
 import '../admin.css';
 
@@ -77,7 +77,7 @@ export default function ResidentDetailPage() {
                     <td>
                       <span className={`admin-badge admin-badge--${p.status}`}>{p.status}</span>
                     </td>
-                    <td>{p.paidAt ? new Date(p.paidAt).toLocaleDateString() : '—'}</td>
+                    <td>{p.paidAt ? formatDate(p.paidAt) : '—'}</td>
                   </tr>
                 ))}
               </tbody>

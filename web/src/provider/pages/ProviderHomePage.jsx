@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { providerApi } from '../../api/client';
+import { formatDateTime, providerApi } from '../../api/client';
 import '../../admin/admin.css';
 
 const STATUS_LABELS = {
@@ -174,7 +174,7 @@ export default function ProviderHomePage() {
           <ul className="admin-list">
             {interviews.map((item) => (
               <li key={item._id} style={{ marginBottom: '1rem' }}>
-                <strong>{new Date(item.scheduledAt).toLocaleString()}</strong>
+                <strong>{formatDateTime(item.scheduledAt)}</strong>
                 <br />
                 {item.location || 'Lugar por confirmar'}
                 {item.notes && (

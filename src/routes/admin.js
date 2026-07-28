@@ -17,10 +17,12 @@ const {
 const { authenticate, requireAdmin, getOrganizationFilter } = require('../middleware/auth');
 const { getBillingSettings, enrichPayment, parseAdministrationFee } = require('../utils/billing');
 const { getLockerSettings } = require('../utils/lockerSettings');
+const { getContactSettings, normalizeWhatsappNumber } = require('../utils/contactSettings');
 const { syncAutoSuspensions } = require('../utils/autoSuspension');
 const { registerPayment } = require('../utils/registerPayment');
 const { getOrgContext, getScopedOrgFilter } = require('../utils/tenantContext');
 const { parseUnitFloor, inferFloorFromUnitNumber } = require('../utils/unitFloor');
+const { matchResidentQuery } = require('../utils/residentSearch');
 
 function parseUnitCode(value) {
   const trimmed = value?.trim();
@@ -236,7 +238,7 @@ router.get('/units', async (req, res) => {
 
     const units = await Unit.find(filter)
       .populate('towerId', 'name code')
-      .sort({ type: 1, number: 1 });
+      .sort({ type: 1, floor: 1, number: 1 });
 
     res.json({ units });
   } catch (err) {
@@ -1143,6 +1145,44 @@ router.patch('/porteria-settings', async (req, res) => {
   }
 });
 
+router.get('/contact-settings', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user, req);
+    if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
+    res.json({ contacts: getContactSettings(organization) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/contact-settings', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user, req);
+    if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
+
+    const current = getContactSettings(organization);
+    const contacts = { ...current };
+
+    if (req.body.receptionWhatsapp !== undefined) {
+      const raw = String(req.body.receptionWhatsapp || '').trim();
+      contacts.receptionWhatsapp = raw ? normalizeWhatsappNumber(raw) : '';
+    }
+    if (req.body.adminWhatsapp !== undefined) {
+      const raw = String(req.body.adminWhatsapp || '').trim();
+      contacts.adminWhatsapp = raw ? normalizeWhatsappNumber(raw) : '';
+    }
+
+    organization.settings = organization.settings || {};
+    organization.settings.contacts = contacts;
+    organization.markModified('settings.contacts');
+    await organization.save();
+
+    res.json({ contacts: getContactSettings(organization) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // —— Parqueaderos visitantes ——
 router.get('/visitor-parking', async (req, res) => {
   try {
@@ -1382,7 +1422,7 @@ router.post('/payments', async (req, res) => {
 router.get('/cartera', async (req, res) => {
   try {
     const orgFilter = getOrganizationFilter(req.user);
-    const { view, period: periodQuery } = req.query;
+    const { view, period: periodQuery, from, to } = req.query;
     const { organization } = await getOrgContext(req.user, req);
     const billingSettings = getBillingSettings(organization);
 
@@ -1390,7 +1430,23 @@ router.get('/cartera', async (req, res) => {
     const currentPeriod =
       periodQuery || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    const populateOpts = { path: 'unitId', select: 'number type tower adminStatus' };
+    const populateOpts = { path: 'unitId', select: 'number type tower adminStatus code' };
+
+    function applyDueDateRange(filter) {
+      if (!from && !to) return filter;
+      const dueDate = {};
+      if (from) {
+        const start = new Date(`${from}T00:00:00`);
+        if (!Number.isNaN(start.getTime())) dueDate.$gte = start;
+      }
+      if (to) {
+        const end = new Date(`${to}T23:59:59.999`);
+        if (!Number.isNaN(end.getTime())) dueDate.$lte = end;
+      }
+      if (Object.keys(dueDate).length) filter.dueDate = dueDate;
+      return filter;
+    }
+
     const sum = (items, pick) => items.reduce((acc, p) => acc + pick(p), 0);
 
     if (view) {
@@ -1400,26 +1456,32 @@ router.get('/cartera', async (req, res) => {
       switch (view) {
         case 'cartera-actual':
           filter.status = { $in: ['pending', 'overdue'] };
+          applyDueDateRange(filter);
           payments = await Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 });
           break;
         case 'recaudo':
           filter = { ...orgFilter, period: currentPeriod, status: 'paid' };
+          applyDueDateRange(filter);
           payments = await Payment.find(filter).populate(populateOpts).sort({ paidAt: -1, dueDate: -1 });
           break;
         case 'morosidad':
           filter = { ...orgFilter, status: 'overdue' };
+          applyDueDateRange(filter);
           payments = await Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 });
           break;
         case 'pendiente':
           filter = { ...orgFilter, period: currentPeriod, status: 'pending' };
+          applyDueDateRange(filter);
           payments = await Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 });
           break;
         case 'facturado':
           filter = { ...orgFilter, period: currentPeriod };
+          applyDueDateRange(filter);
           payments = await Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 });
           break;
         case 'tasa-recaudo':
           filter = { ...orgFilter, period: currentPeriod };
+          applyDueDateRange(filter);
           payments = await Payment.find(filter).populate(populateOpts).sort({ status: 1, dueDate: -1 });
           break;
         default:
@@ -1488,6 +1550,7 @@ router.get('/cartera', async (req, res) => {
 
     const filter = { ...orgFilter };
     if (periodQuery) filter.period = periodQuery;
+    applyDueDateRange(filter);
 
     const [paid, pending, overdue, rawPayments] = await Promise.all([
       Payment.countDocuments({ ...filter, status: 'paid' }),
@@ -1525,7 +1588,7 @@ router.get('/residents', async (req, res) => {
 
     const residents = await Resident.find(filter)
       .populate('userId', 'firstName lastName email phone')
-      .populate('unitId', 'number type tower adminStatus towerId')
+      .populate('unitId', 'number type tower adminStatus towerId code')
       .sort({ createdAt: -1 });
 
     let result = residents;
@@ -1552,13 +1615,7 @@ router.get('/residents', async (req, res) => {
     }
 
     if (req.query.q) {
-      const q = req.query.q.toLowerCase();
-      result = result.filter((r) => {
-        const name = `${r.userId?.firstName} ${r.userId?.lastName}`.toLowerCase();
-        const email = r.userId?.email?.toLowerCase() || '';
-        const unit = r.unitId?.number?.toLowerCase() || '';
-        return name.includes(q) || email.includes(q) || unit.includes(q);
-      });
+      result = result.filter((r) => matchResidentQuery(r, req.query.q));
     }
 
     res.json({ residents: result });
@@ -1604,6 +1661,15 @@ router.post('/residents', async (req, res) => {
     const unit = await Unit.findById(unitId);
     if (!unit) return res.status(404).json({ error: 'Unidad no encontrada' });
 
+    const organizationId = building?.organizationId || unit.organizationId;
+    const existing = await User.findOne({
+      email: String(email).trim().toLowerCase(),
+      organizationId,
+    });
+    if (existing) {
+      return res.status(400).json({ error: 'Este usuario ya está registrado en este conjunto' });
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
       email: String(email).trim().toLowerCase(),
@@ -1612,7 +1678,7 @@ router.post('/residents', async (req, res) => {
       lastName,
       phone,
       role: 'RESIDENT',
-      organizationId: building?.organizationId || unit.organizationId,
+      organizationId,
     });
 
     const resident = await Resident.create({
@@ -1629,7 +1695,7 @@ router.post('/residents', async (req, res) => {
     res.status(201).json({ resident });
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(400).json({ error: 'El correo ya está registrado' });
+      return res.status(400).json({ error: 'Este usuario ya está registrado en este conjunto' });
     }
     res.status(400).json({ error: err.message });
   }

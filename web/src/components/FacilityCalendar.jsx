@@ -1,3 +1,4 @@
+import { formatDate, formatTime } from '../utils/dateTime';
 import {
   buildOpenHourSlots,
   eventGridPosition,
@@ -98,7 +99,7 @@ export default function FacilityCalendar({
                   className="facility-cal__slot"
                   style={{ height: HOUR_HEIGHT }}
                   onClick={(e) => handleGridClick(day, slot, e)}
-                  aria-label={`Reservar ${day.toLocaleDateString()} ${formatHourLabel(slot.hour)}`}
+                  aria-label={`Reservar ${formatDate(day)} ${formatHourLabel(slot.hour)}`}
                 />
               ))}
 
@@ -116,9 +117,9 @@ export default function FacilityCalendar({
                   >
                     <span className="facility-cal__event-title">{event.title}</span>
                     <span className="facility-cal__event-time">
-                      {new Date(event.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTime(event.startAt)}
                       {' – '}
-                      {new Date(event.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTime(event.endAt)}
                     </span>
                   </button>
                 );

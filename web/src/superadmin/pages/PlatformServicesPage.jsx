@@ -16,10 +16,11 @@ export default function PlatformServicesPage() {
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
 
   async function load() {
     const data = await platformApi.serviceCategories();
-    setCategories(data.categories);
+    setCategories(data.categories || []);
   }
 
   useEffect(() => {
@@ -56,17 +57,22 @@ export default function PlatformServicesPage() {
     };
 
     try {
+      setSaving(true);
       if (editingId) {
         await platformApi.updateServiceCategory(editingId, body);
-        setSuccess('Servicio actualizado.');
+        setSuccess(`Servicio "${body.name}" actualizado. Visible en registro de prestadores.`);
       } else {
-        await platformApi.createServiceCategory(body);
-        setSuccess('Servicio creado.');
+        const result = await platformApi.createServiceCategory(body);
+        setSuccess(
+          `Servicio "${result.category?.name || body.name}" creado. Ya aparece en el registro de prestadores.`
+        );
       }
       cancelEdit();
       await load();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -82,14 +88,19 @@ export default function PlatformServicesPage() {
   }
 
   const activeCategories = categories.filter((c) => c.isActive !== false);
+  const inactiveCategories = categories.filter((c) => c.isActive === false);
 
   return (
     <div className="admin-page">
       <header className="admin-page__header">
         <h1>Catálogo de servicios</h1>
         <p>
-          Tipos de servicio que verán residentes y prestadores (plomería, aseo, electricidad, etc.).
-          Los precios los define cada prestador aprobado según el trabajo.
+          Tipos de servicio que verán residentes y prestadores (plomería, aseo, jardinería, etc.).
+          Lo que guardes aquí alimenta el formulario de registro de prestadores en tiempo real.
+        </p>
+        <p className="admin-page__header-meta">
+          {activeCategories.length} activo(s)
+          {inactiveCategories.length > 0 ? ` · ${inactiveCategories.length} inactivo(s)` : ''}
         </p>
       </header>
 
@@ -146,8 +157,8 @@ export default function PlatformServicesPage() {
             />
           </label>
           <div className="admin-actions">
-            <button type="submit" className="admin-btn">
-              {editingId ? 'Guardar cambios' : 'Agregar servicio'}
+            <button type="submit" className="admin-btn" disabled={saving}>
+              {saving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Agregar servicio'}
             </button>
             {editingId && (
               <button type="button" className="admin-btn admin-btn--ghost" onClick={cancelEdit}>
@@ -216,6 +227,49 @@ export default function PlatformServicesPage() {
           </tbody>
         </table>
       </div>
+
+      {inactiveCategories.length > 0 && (
+        <div className="admin-card admin-table-wrap">
+          <h2>Servicios inactivos</h2>
+          <p className="admin-empty" style={{ padding: '0 0 1rem' }}>
+            No aparecen en el registro de prestadores.
+          </p>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Servicio</th>
+                <th>Slug</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inactiveCategories.map((category) => (
+                <tr key={category._id}>
+                  <td>{category.name}</td>
+                  <td>{category.slug}</td>
+                  <td className="admin-actions">
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost"
+                      onClick={async () => {
+                        try {
+                          await platformApi.updateServiceCategory(category._id, { isActive: true });
+                          setSuccess(`Servicio "${category.name}" reactivado.`);
+                          await load();
+                        } catch (err) {
+                          setError(err.message);
+                        }
+                      }}
+                    >
+                      Reactivar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

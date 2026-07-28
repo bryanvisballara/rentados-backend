@@ -104,10 +104,23 @@ async function apiForm(path, formData, options = {}) {
   return data;
 }
 
-export function login(email, password, portal) {
+export function login(email, password, portal, options = {}) {
+  const { buildingId } = options;
   return api('/auth/login', {
     method: 'POST',
-    body: { email, password, portal },
+    body: { email, password, portal, buildingId },
+    skipAuth: true,
+    skipAuthRetry: true,
+  });
+}
+
+export function fetchLoginCountries() {
+  return api('/auth/login-countries', { skipAuth: true, skipAuthRetry: true });
+}
+
+export function fetchLoginBuildings(params = {}) {
+  const qs = buildQueryString(params);
+  return api(`/auth/login-buildings${qs ? `?${qs}` : ''}`, {
     skipAuth: true,
     skipAuthRetry: true,
   });
@@ -125,6 +138,8 @@ export function formatMoney(value, currency = 'COP') {
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 }
+
+export { formatDate, formatDateTime, formatTime } from '../utils/dateTime';
 
 export const adminApi = {
   context: () => api('/admin/context'),
@@ -197,6 +212,10 @@ export const adminApi = {
     getSettings: () => api('/admin/billing-settings'),
     updateSettings: (body) => api('/admin/billing-settings', { method: 'PATCH', body }),
   },
+  contactSettings: {
+    get: () => api('/admin/contact-settings'),
+    update: (body) => api('/admin/contact-settings', { method: 'PATCH', body }),
+  },
   suspensions: {
     list: () => api('/admin/service-suspensions'),
     create: (body) => api('/admin/service-suspensions', { method: 'POST', body }),
@@ -254,12 +273,25 @@ export const porteriaApi = {
     registerEntry: (body) => api('/porteria/parking/entries', { method: 'POST', body }),
     registerExit: (body) => api('/porteria/parking/exit', { method: 'POST', body }),
   },
+  apartmentVisits: {
+    list: (params = {}) => {
+      const q = buildQueryString(params);
+      return api(`/porteria/apartment-visits${q ? `?${q}` : ''}`);
+    },
+    create: (body) => api('/porteria/apartment-visits', { method: 'POST', body }),
+    exit: (id) => api(`/porteria/apartment-visits/${id}/exit`, { method: 'PATCH' }),
+  },
   notifications: {
     send: (body) => api('/porteria/notifications', { method: 'POST', body }),
   },
 };
 
 export const residentApi = {
+  home: () => api('/resident/home'),
+  publications: () => api('/resident/publications'),
+  providers: () => api('/resident/providers'),
+  restaurants: () => api('/resident/restaurants'),
+  createVisitorRequest: (body) => api('/resident/visitor-requests', { method: 'POST', body }),
   billing: () => api('/resident/billing'),
   services: () => api('/resident/services'),
   myBookings: () => api('/resident/my-bookings'),
@@ -277,6 +309,32 @@ export const residentApi = {
     create: (body) => api('/resident/facility-bookings', { method: 'POST', body }),
     remove: (id) => api(`/resident/facility-bookings/${id}`, { method: 'DELETE' }),
   },
+  utilities: {
+    overview: () => api('/resident/utilities/overview'),
+    providers: (params = {}) => {
+      const q = buildQueryString(params);
+      return api(`/resident/utilities/providers${q ? `?${q}` : ''}`);
+    },
+    linkAccount: (body) => api('/resident/utilities/accounts', { method: 'POST', body }),
+    unlinkAccount: (id) => api(`/resident/utilities/accounts/${id}`, { method: 'DELETE' }),
+    accountDetail: (id) => api(`/resident/utilities/accounts/${id}`),
+    openPortal: (id) => api(`/resident/utilities/accounts/${id}/open-portal`, { method: 'POST' }),
+    gmailStatus: () => api('/resident/utilities/gmail'),
+    gmailConnect: () => api('/resident/utilities/gmail/connect', { method: 'POST' }),
+    gmailSync: () => api('/resident/utilities/gmail/sync', { method: 'POST' }),
+    gmailDisconnect: () => api('/resident/utilities/gmail', { method: 'DELETE' }),
+    bills: (params = {}) => {
+      const q = buildQueryString(params);
+      return api(`/resident/utilities/bills${q ? `?${q}` : ''}`);
+    },
+    openPayment: (id) => api(`/resident/utilities/bills/${id}/open-payment`, { method: 'POST' }),
+    markPaid: (id, body = {}) =>
+      api(`/resident/utilities/bills/${id}/mark-paid`, { method: 'POST', body }),
+    payments: (params = {}) => {
+      const q = buildQueryString(params);
+      return api(`/resident/utilities/payments${q ? `?${q}` : ''}`);
+    },
+  },
 };
 
 export const platformApi = {
@@ -293,6 +351,7 @@ export const platformApi = {
   createBuilding: (orgId, body) =>
     api(`/platform/organizations/${orgId}/buildings`, { method: 'POST', body }),
   buildingSummary: (id) => api(`/platform/buildings/${id}/summary`),
+  updateBuilding: (id, body) => api(`/platform/buildings/${id}`, { method: 'PATCH', body }),
   listAdmins: (orgId) => api(`/platform/organizations/${orgId}/admins`),
   createAdmin: (orgId, body) =>
     api(`/platform/organizations/${orgId}/admins`, { method: 'POST', body }),
@@ -315,6 +374,11 @@ export const platformApi = {
   removeProvider: (id) => api(`/platform/providers/${id}`, { method: 'DELETE' }),
   createInterview: (providerId, body) =>
     api(`/platform/providers/${providerId}/interviews`, { method: 'POST', body }),
+  interviews: (params = {}) => {
+    const q = buildQueryString(params);
+    return api(`/platform/interviews${q ? `?${q}` : ''}`);
+  },
+  updateInterview: (id, body) => api(`/platform/interviews/${id}`, { method: 'PATCH', body }),
   publications: () => api('/platform/publications'),
   createPublication: (body) => api('/platform/publications', { method: 'POST', body }),
   updatePublication: (id, body) => api(`/platform/publications/${id}`, { method: 'PATCH', body }),
@@ -381,6 +445,17 @@ export const platformApi = {
   },
   updateRestaurantOrder: (id, body) =>
     api(`/platform/restaurants/orders/${id}`, { method: 'PATCH', body }),
+  utilityProviders: (params = {}) => {
+    const q = buildQueryString(params);
+    return api(`/platform/utility-providers${q ? `?${q}` : ''}`);
+  },
+  createUtilityProvider: (body) =>
+    api('/platform/utility-providers', { method: 'POST', body }),
+  updateUtilityProvider: (id, body) =>
+    api(`/platform/utility-providers/${id}`, { method: 'PATCH', body }),
+  removeUtilityProvider: (id) =>
+    api(`/platform/utility-providers/${id}`, { method: 'DELETE' }),
+  createUtilityBill: (body) => api('/platform/utility-bills', { method: 'POST', body }),
 };
 
 export const providerApi = {
@@ -395,5 +470,5 @@ export async function registerProvider(body) {
 }
 
 export async function fetchServiceCategories() {
-  return api('/auth/service-categories', { skipAuth: true });
+  return api('/auth/service-categories', { skipAuth: true, skipAuthRetry: true });
 }

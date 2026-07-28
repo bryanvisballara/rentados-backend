@@ -22,6 +22,8 @@ module.exports = {
   ServiceSuspension: require('./ServiceSuspension'),
   LockerPackage: require('./LockerPackage'),
   ResidentNotification: require('./ResidentNotification'),
+  ResidentVisitorRequest: require('./ResidentVisitorRequest'),
+  ApartmentVisit: require('./ApartmentVisit'),
   ProviderInterview: require('./ProviderInterview'),
   PlatformPublication: require('./PlatformPublication'),
   ShopCategory: require('./ShopCategory'),
@@ -33,4 +35,9 @@ module.exports = {
   RestaurantMenuCategory: require('./RestaurantMenuCategory'),
   RestaurantMenuItem: require('./RestaurantMenuItem'),
   RestaurantOrder: require('./RestaurantOrder'),
+  UtilityProvider: require('./UtilityProvider'),
+  ResidentUtilityAccount: require('./ResidentUtilityAccount'),
+  UtilityBill: require('./UtilityBill'),
+  UtilityPayment: require('./UtilityPayment'),
+  GmailConnection: require('./GmailConnection'),
 };

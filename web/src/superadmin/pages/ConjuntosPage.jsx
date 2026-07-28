@@ -11,6 +11,7 @@ const emptyConjunto = {
   email: '',
   phone: '',
   buildingName: '',
+  street: '',
   city: '',
   state: '',
   country: 'Colombia',
@@ -19,6 +20,15 @@ const emptyConjunto = {
   adminLastName: '',
   adminEmail: '',
   adminPassword: '',
+};
+
+const emptyBuildingEdit = {
+  buildingName: '',
+  street: '',
+  city: '',
+  state: '',
+  country: 'Colombia',
+  description: '',
 };
 
 const emptyAdmin = {
@@ -58,6 +68,9 @@ export default function ConjuntosPage() {
   const [expandedOrgId, setExpandedOrgId] = useState(null);
   const [adminForms, setAdminForms] = useState({});
   const [addingAdminFor, setAddingAdminFor] = useState(null);
+  const [editingBuildingId, setEditingBuildingId] = useState(null);
+  const [editForm, setEditForm] = useState(emptyBuildingEdit);
+  const [savingBuilding, setSavingBuilding] = useState(false);
 
   async function load() {
     const [overviewData, engagementData] = await Promise.all([
@@ -103,7 +116,12 @@ export default function ConjuntosPage() {
         email: form.email,
         phone: form.phone,
         buildingName: form.buildingName,
-        address: { city: form.city, state: form.state, country: form.country || 'Colombia' },
+        address: {
+          street: form.street,
+          city: form.city,
+          state: form.state,
+          country: form.country || 'Colombia',
+        },
         description: form.description,
         admins,
       });
@@ -150,6 +168,48 @@ export default function ConjuntosPage() {
       await load();
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  function startEditBuilding(row) {
+    setEditingBuildingId(String(row.buildingId));
+    setEditForm({
+      buildingName: row.buildingName,
+      street: row.street === '—' ? '' : row.street,
+      city: row.city === '—' ? '' : row.city,
+      state: row.state === '—' ? '' : row.state,
+      country: row.country === '—' ? 'Colombia' : row.country,
+      description: '',
+    });
+    setExpandedOrgId(null);
+    setAddingAdminFor(null);
+  }
+
+  async function saveBuildingEdit(e) {
+    e.preventDefault();
+    setSavingBuilding(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await platformApi.updateBuilding(editingBuildingId, {
+        name: editForm.buildingName.trim(),
+        address: {
+          street: editForm.street.trim(),
+          city: editForm.city.trim(),
+          state: editForm.state.trim(),
+          country: editForm.country.trim() || 'Colombia',
+        },
+        description: editForm.description.trim() || undefined,
+      });
+      setEditingBuildingId(null);
+      setEditForm(emptyBuildingEdit);
+      setSuccess('Datos del conjunto actualizados.');
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingBuilding(false);
     }
   }
 
@@ -268,8 +328,9 @@ export default function ConjuntosPage() {
                       <span className="conjuntos-building-name">{row.buildingName}</span>
                       <span className="conjuntos-building-org">{row.organizationName}</span>
                       <span className="conjuntos-metric-sub">
-                        {row.city}
-                        {row.country ? ` · ${row.country}` : ''}
+                        {[row.street !== '—' ? row.street : null, row.city !== '—' ? row.city : null, row.country]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </span>
                     </td>
                     <td>
@@ -293,6 +354,13 @@ export default function ConjuntosPage() {
                       </span>
                     </td>
                     <td className="admin-actions">
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--ghost"
+                        onClick={() => startEditBuilding(row)}
+                      >
+                        Editar
+                      </button>
                       <Link
                         to={`/super-admin/conjuntos/${row.buildingId}/adopcion`}
                         className="admin-btn"
@@ -380,8 +448,24 @@ export default function ConjuntosPage() {
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </label>
             <label>
+              Dirección
+              <input
+                value={form.street}
+                onChange={(e) => setForm({ ...form, street: e.target.value })}
+                placeholder="Cra 75 # 78-54"
+              />
+            </label>
+            <label>
               Ciudad
-              <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+              <input
+                value={form.city}
+                onChange={(e) => setForm({ ...form, city: e.target.value })}
+                placeholder="Barranquilla"
+              />
+              <small style={{ color: '#6b655c', fontWeight: 400 }}>
+                Define qué empresas de servicios públicos verán los residentes (energía, agua, gas,
+                etc.).
+              </small>
             </label>
             <label>
               Departamento
@@ -439,6 +523,79 @@ export default function ConjuntosPage() {
             <button type="submit" className="admin-btn" disabled={creating}>
               {creating ? 'Creando…' : 'Crear conjunto'}
             </button>
+          </form>
+        </div>
+      )}
+
+      {editingBuildingId && (
+        <div className="admin-card">
+          <h2>Editar conjunto</h2>
+          <p className="admin-empty" style={{ marginTop: 0 }}>
+            La dirección ayuda a distinguir conjuntos con el mismo nombre, incluso en la misma ciudad.
+          </p>
+          <form className="admin-form" onSubmit={saveBuildingEdit}>
+            <label>
+              Nombre del conjunto
+              <input
+                value={editForm.buildingName}
+                onChange={(e) => setEditForm({ ...editForm, buildingName: e.target.value })}
+                required
+              />
+            </label>
+            <label style={{ gridColumn: '1 / -1' }}>
+              Dirección
+              <input
+                value={editForm.street}
+                onChange={(e) => setEditForm({ ...editForm, street: e.target.value })}
+                placeholder="Cra 75 # 78-54"
+                required
+              />
+            </label>
+            <label>
+              Ciudad
+              <input
+                value={editForm.city}
+                onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Departamento / estado
+              <input
+                value={editForm.state}
+                onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+              />
+            </label>
+            <label>
+              País
+              <input
+                value={editForm.country}
+                onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
+                required
+              />
+            </label>
+            <label style={{ gridColumn: '1 / -1' }}>
+              Descripción
+              <textarea
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              />
+            </label>
+            <div className="admin-actions">
+              <button type="submit" className="admin-btn" disabled={savingBuilding}>
+                {savingBuilding ? 'Guardando…' : 'Guardar cambios'}
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                onClick={() => {
+                  setEditingBuildingId(null);
+                  setEditForm(emptyBuildingEdit);
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
           </form>
         </div>
       )}

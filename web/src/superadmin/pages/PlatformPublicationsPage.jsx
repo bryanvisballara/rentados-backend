@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { platformApi } from '../../api/client';
+import { formatDateTime, platformApi } from '../../api/client';
 import '../../admin/admin.css';
 
 const emptyPub = {
@@ -153,7 +153,7 @@ export default function PlatformPublicationsPage() {
                   <br />
                   {(p.targetCities?.length ? p.targetCities.join(', ') : 'Todas las ciudades')}
                 </td>
-                <td>{new Date(p.publishedAt || p.createdAt).toLocaleString()}</td>
+                <td>{formatDateTime(p.publishedAt || p.createdAt)}</td>
                 <td>
                   <button
                     type="button"

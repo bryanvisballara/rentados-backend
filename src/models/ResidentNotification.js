@@ -24,12 +24,19 @@ const residentNotificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['locker_package', 'visitor_parking', 'porteria_message', 'locker_overflow'],
+      enum: [
+        'locker_package',
+        'visitor_parking',
+        'porteria_message',
+        'locker_overflow',
+        'utility_bill',
+      ],
       required: true,
     },
     title: { type: String, required: true, trim: true },
     body: { type: String, trim: true },
     imageUrl: { type: String },
+    meta: { type: mongoose.Schema.Types.Mixed },
     lockerPackageId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'LockerPackage',

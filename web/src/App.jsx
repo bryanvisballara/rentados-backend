@@ -7,8 +7,10 @@ import SuperAdminDashboardPage from './superadmin/pages/DashboardPage';
 import ConjuntosPage from './superadmin/pages/ConjuntosPage';
 import ConjuntoAppAdoptionPage from './superadmin/pages/ConjuntoAppAdoptionPage';
 import ProviderApplicationsPage from './superadmin/pages/ProviderApplicationsPage';
+import ProviderInterviewsSchedulePage from './superadmin/pages/ProviderInterviewsSchedulePage';
 import ProvidersPage from './superadmin/pages/ProvidersPage';
 import PlatformServicesPage from './superadmin/pages/PlatformServicesPage';
+import UtilityProvidersPage from './superadmin/pages/UtilityProvidersPage';
 import PlatformPublicationsPage from './superadmin/pages/PlatformPublicationsPage';
 import ShopPage from './superadmin/pages/ShopPage';
 import ShopOrdersPage from './superadmin/pages/ShopOrdersPage';
@@ -29,15 +31,21 @@ import CarteraPage from './admin/pages/CarteraPage';
 import CarteraDetailPage from './admin/pages/CarteraDetailPage';
 import MorosidadPage from './admin/pages/MorosidadPage';
 import ResidentHomePage from './resident/ResidentHomePage';
+import ResidentLayout from './resident/ResidentLayout';
+import ResidentAdministrationPage from './resident/ResidentAdministrationPage';
+import ResidentPublicServicesPage from './resident/ResidentPublicServicesPage';
+import ResidentProvidersPage from './resident/ResidentProvidersPage';
+import ResidentRestaurantsPage from './resident/ResidentRestaurantsPage';
+import ResidentShopPage from './resident/ResidentShopPage';
+import ResidentFacilitiesPage from './resident/ResidentFacilitiesPage';
 import ResidentAssignPage from './admin/pages/ResidentAssignPage';
 import ResidentsPage from './admin/pages/ResidentsPage';
 import ResidentDetailPage from './admin/pages/ResidentDetailPage';
 import PorteriaLoginPage from './porteria/PorteriaLoginPage';
 import PorteriaLayout from './porteria/PorteriaLayout';
-import RegisterPackagePage from './porteria/pages/RegisterPackagePage';
 import ParkingPage from './porteria/pages/ParkingPage';
-import BitacoraPage from './porteria/pages/BitacoraPage';
 import CasilleroPage from './porteria/pages/CasilleroPage';
+import VisitantesPage from './porteria/pages/VisitantesPage';
 import NotificationsPage from './porteria/pages/NotificationsPage';
 
 export default function App() {
@@ -63,8 +71,10 @@ export default function App() {
         <Route path="conjuntos" element={<ConjuntosPage />} />
         <Route path="conjuntos/:buildingId/adopcion" element={<ConjuntoAppAdoptionPage />} />
         <Route path="solicitudes-prestadores" element={<ProviderApplicationsPage />} />
+        <Route path="cronograma-prestadores" element={<ProviderInterviewsSchedulePage />} />
         <Route path="prestadores" element={<ProvidersPage />} />
         <Route path="servicios" element={<PlatformServicesPage />} />
+        <Route path="servicios-publicos" element={<UtilityProvidersPage />} />
         <Route path="publicaciones" element={<PlatformPublicationsPage />} />
         <Route path="shop" element={<ShopPage />} />
         <Route path="shop-pedidos" element={<ShopOrdersPage />} />
@@ -115,22 +125,31 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="registrar-paquete" replace />} />
-        <Route path="registrar-paquete" element={<RegisterPackagePage />} />
-        <Route path="parqueadero" element={<ParkingPage />} />
-        <Route path="bitacora" element={<BitacoraPage />} />
+        <Route index element={<Navigate to="casillero" replace />} />
         <Route path="casillero" element={<CasilleroPage />} />
+        <Route path="visitantes" element={<VisitantesPage />} />
+        <Route path="parqueadero" element={<ParkingPage />} />
         <Route path="notificaciones" element={<NotificationsPage />} />
+        <Route path="registrar-paquete" element={<Navigate to="/porteria/casillero" replace />} />
+        <Route path="bitacora" element={<Navigate to="/porteria/casillero" replace />} />
       </Route>
 
       <Route
         path="/app"
         element={
           <ProtectedRoute roles={['RESIDENT']} loginPath="/login">
-            <ResidentHomePage />
+            <ResidentLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<ResidentHomePage />} />
+        <Route path="administracion" element={<ResidentAdministrationPage />} />
+        <Route path="servicios-publicos" element={<ResidentPublicServicesPage />} />
+        <Route path="prestadores" element={<ResidentProvidersPage />} />
+        <Route path="shop" element={<ResidentShopPage />} />
+        <Route path="restaurantes" element={<ResidentRestaurantsPage />} />
+        <Route path="servicios-conjunto" element={<ResidentFacilitiesPage />} />
+      </Route>
 
       <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>

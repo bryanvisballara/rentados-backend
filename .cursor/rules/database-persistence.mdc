@@ -1,0 +1,14 @@
+---
+description: Toda operación de datos debe persistir en MongoDB (CRUD real)
+alwaysApply: true
+---
+
+# Persistencia en base de datos
+
+En Rentados, **todo** lo que el usuario registra, edita, elimina o actualiza desde la app debe reflejarse en **MongoDB**:
+
+- Crear, editar y desactivar entidades → escribir en la colección correspondiente (no solo estado local en frontend).
+- No usar listas hardcodeadas para datos de negocio que el usuario administra (categorías, prestadores, conjuntos, menús, etc.).
+- Las lecturas de pantallas admin/residente/prestador deben venir de la API y esta de MongoDB.
+- Evitar que scripts de seed **borren** datos creados por el usuario; preferir upsert de datos demo sin pisar registros personalizados.
+- Si algo “no se guardó”, verificar: endpoint POST/PATCH/DELETE, mismo entorno (local vs Render) y que el seed no haya reseteado la colección.

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { formatMoney, platformApi } from '../../api/client';
+import { formatDateTime, formatMoney, platformApi } from '../../api/client';
 import '../../admin/admin.css';
 import './ShopPage.css';
 
@@ -138,7 +138,7 @@ export default function ShopOrdersPage() {
                         {order.orderNumber}
                       </button>
                       <span className="shop-order-meta">
-                        {new Date(order.createdAt).toLocaleString()}
+                        {formatDateTime(order.createdAt)}
                       </span>
                       <span className="shop-order-meta">
                         {order.items.length} producto(s)

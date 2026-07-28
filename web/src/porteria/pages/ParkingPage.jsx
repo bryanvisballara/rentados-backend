@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { porteriaApi } from '../../api/client';
+import { formatDateTime, porteriaApi } from '../../api/client';
 import UnitSelectField from '../components/UnitSelectField';
 import '../../admin/admin.css';
 
@@ -217,7 +217,7 @@ export default function ParkingPage() {
                   <td>{visit.unitNumber || visit.unitId?.number}</td>
                   <td>{visit.tower || '—'}</td>
                   <td>{visit.spotNumber || visit.spotId?.spotNumber}</td>
-                  <td>{new Date(visit.entryAt).toLocaleString()}</td>
+                  <td>{formatDateTime(visit.entryAt)}</td>
                 </tr>
               ))}
             </tbody>

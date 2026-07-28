@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { adminApi, formatCop } from '../../api/client';
+import { adminApi, formatCop, formatDate } from '../../api/client';
 import '../admin.css';
 
 function buildOverdueRows(units, payments) {
@@ -95,6 +95,8 @@ export default function MorosidadPage() {
   const [submitting, setSubmitting] = useState(false);
   const [savingAuto, setSavingAuto] = useState(false);
   const [syncingAuto, setSyncingAuto] = useState(false);
+  const [contacts, setContacts] = useState({ receptionWhatsapp: '', adminWhatsapp: '' });
+  const [savingContacts, setSavingContacts] = useState(false);
 
   const selectedSet = useMemo(() => new Set(selectedUnitIds), [selectedUnitIds]);
   const allSelected = overdueRows.length > 0 && selectedUnitIds.length === overdueRows.length;
@@ -108,13 +110,15 @@ export default function MorosidadPage() {
     autoFacilitySet.size > 0 && !allAutoFacilitiesSelected;
 
   async function load() {
-    const [settings, unitsData, facilitiesData, suspensionsData, cartera] = await Promise.all([
-      adminApi.billing.getSettings(),
-      adminApi.units.list(),
-      adminApi.facilities.list(),
-      adminApi.suspensions.list(),
-      adminApi.cartera(),
-    ]);
+    const [settings, unitsData, facilitiesData, suspensionsData, cartera, contactSettings] =
+      await Promise.all([
+        adminApi.billing.getSettings(),
+        adminApi.units.list(),
+        adminApi.facilities.list(),
+        adminApi.suspensions.list(),
+        adminApi.cartera(),
+        adminApi.contactSettings.get(),
+      ]);
 
     setBilling(normalizeBilling({
       ...settings.billing,
@@ -123,6 +127,10 @@ export default function MorosidadPage() {
     setOverdueRows(buildOverdueRows(unitsData.units, cartera.payments));
     setFacilities(facilitiesData.facilities);
     setSuspensions(suspensionsData.suspensions);
+    setContacts({
+      receptionWhatsapp: contactSettings.contacts?.receptionWhatsapp || '',
+      adminWhatsapp: contactSettings.contacts?.adminWhatsapp || '',
+    });
   }
 
   useEffect(() => {
@@ -160,6 +168,25 @@ export default function MorosidadPage() {
       setTimeout(() => setSaved(''), 3000);
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function saveContacts(e) {
+    e.preventDefault();
+    setSavingContacts(true);
+    setError('');
+    try {
+      const data = await adminApi.contactSettings.update(contacts);
+      setContacts({
+        receptionWhatsapp: data.contacts?.receptionWhatsapp || '',
+        adminWhatsapp: data.contacts?.adminWhatsapp || '',
+      });
+      setSaved('WhatsApp de contacto guardado');
+      setTimeout(() => setSaved(''), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingContacts(false);
     }
   }
 
@@ -353,6 +380,36 @@ export default function MorosidadPage() {
           {syncMessage}
         </div>
       )}
+
+      <div className="admin-card">
+        <h2>WhatsApp para residentes</h2>
+        <p className="admin-empty" style={{ marginTop: 0 }}>
+          Estos números se usan en los botones “Hablar con recepción” y “Hablar con administración”
+          del portal del residente. Usa el número con indicativo (ej. 573001234567) o celular
+          colombiano de 10 dígitos.
+        </p>
+        <form className="admin-form" onSubmit={saveContacts}>
+          <label>
+            WhatsApp recepción / portería
+            <input
+              value={contacts.receptionWhatsapp}
+              onChange={(e) => setContacts({ ...contacts, receptionWhatsapp: e.target.value })}
+              placeholder="573001112233"
+            />
+          </label>
+          <label>
+            WhatsApp administración
+            <input
+              value={contacts.adminWhatsapp}
+              onChange={(e) => setContacts({ ...contacts, adminWhatsapp: e.target.value })}
+              placeholder="573009998877"
+            />
+          </label>
+          <button type="submit" className="admin-btn" disabled={savingContacts}>
+            {savingContacts ? 'Guardando…' : 'Guardar WhatsApp'}
+          </button>
+        </form>
+      </div>
 
       <div className="admin-card">
         <h2>Valor de administración</h2>
@@ -709,8 +766,8 @@ export default function MorosidadPage() {
                     {s.isAutomatic ? 'Automática' : 'Manual'}
                   </span>
                 </td>
-                <td>{new Date(s.startAt).toLocaleDateString()}</td>
-                <td>{new Date(s.endAt).toLocaleDateString()}</td>
+                <td>{formatDate(s.startAt)}</td>
+                <td>{formatDate(s.endAt)}</td>
                 <td>
                   <span className={`admin-badge admin-badge--${s.isActive ? 'overdue' : 'paid'}`}>
                     {s.isActive ? 'Activa' : 'Inactiva'}

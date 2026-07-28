@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import FacilityCalendar, { addDays, startOfWeek } from '../components/FacilityCalendar';
-import { formatCop, residentApi } from '../api/client';
+import { formatCop, formatDateTime, formatTime, residentApi } from '../api/client';
 import '../components/FacilityCalendar.css';
 
 const emptyForm = { startAt: '', endAt: '', blockIndex: '', notes: '' };
@@ -118,7 +118,7 @@ export default function ResidentBookingsSection({ services = [] }) {
                 <div>
                   <strong>{b.title || 'Reserva'}</strong>
                   <p className="resident__muted">
-                    {new Date(b.startAt).toLocaleString()} – {new Date(b.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {formatDateTime(b.startAt)} – {formatTime(b.endAt)}
                     {b.totalPrice > 0 && ` · ${formatCop(b.totalPrice)}`}
                   </p>
                 </div>
@@ -235,7 +235,7 @@ export default function ResidentBookingsSection({ services = [] }) {
         <div className="resident__modal-overlay" onClick={() => setModal(null)}>
           <div className="resident__modal" onClick={(e) => e.stopPropagation()}>
             <h2>Tu reserva</h2>
-            <p>{new Date(modal.event.startAt).toLocaleString()} – {new Date(modal.event.endAt).toLocaleString()}</p>
+            <p>{formatDateTime(modal.event.startAt)} – {formatDateTime(modal.event.endAt)}</p>
             <div className="resident__booking-actions">
               <button type="button" className="resident__danger-btn" onClick={() => cancelBooking(modal.event.id)}>
                 Cancelar reserva

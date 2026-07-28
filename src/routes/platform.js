@@ -18,9 +18,16 @@ const {
   RestaurantMenuCategory,
   RestaurantMenuItem,
   RestaurantOrder,
+  UtilityProvider,
+  ResidentUtilityAccount,
 } = require('../models');
 const { authenticate, requireSuperAdmin, formatAuthUser } = require('../middleware/auth');
 const { slugify } = require('../utils/tenantContext');
+const { SERVICE_TYPES, SERVICE_TYPE_KEYS, normalizeCity } = require('../utils/utilityServices');
+const {
+  formatProvider,
+  createUtilityBill,
+} = require('../utils/utilityBilling');
 const { getPlatformDashboardStats } = require('../utils/platformDashboard');
 const { uploadPublicationMedia } = require('../middleware/uploadPublication');
 const { uploadShopImage } = require('../utils/shopMedia');
@@ -74,6 +81,11 @@ router.post('/service-categories', async (req, res) => {
 
     res.status(201).json({ category });
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({
+        error: 'Ya existe un servicio con ese slug. Usa otro nombre o slug.',
+      });
+    }
     res.status(400).json({ error: err.message });
   }
 });
@@ -242,6 +254,38 @@ router.delete('/providers/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/interviews', async (req, res) => {
+  try {
+    const { from, to, status } = req.query;
+    const filter = {};
+
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
+    if (from || to) {
+      filter.scheduledAt = {};
+      if (from) filter.scheduledAt.$gte = new Date(from);
+      if (to) filter.scheduledAt.$lte = new Date(to);
+    }
+
+    const interviews = await ProviderInterview.find(filter)
+      .populate({
+        path: 'providerId',
+        select: 'businessName approvalStatus userId categoryIds',
+        populate: [
+          { path: 'userId', select: 'firstName lastName email phone' },
+          { path: 'categoryIds', select: 'name' },
+        ],
+      })
+      .sort({ scheduledAt: 1 });
+
+    res.json({ interviews });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -539,21 +583,37 @@ router.post('/organizations/:orgId/buildings', async (req, res) => {
 
 router.patch('/buildings/:id', async (req, res) => {
   try {
-    const allowed = [
-      'name',
-      'slug',
-      'address',
-      'description',
-      'heroImageUrl',
-      'isActive',
-      'platformCommissionPercent',
-    ];
-    const updates = Object.fromEntries(
-      Object.entries(req.body).filter(([key]) => allowed.includes(key))
-    );
-
-    const building = await Building.findByIdAndUpdate(req.params.id, updates, { new: true });
+    const building = await Building.findById(req.params.id);
     if (!building) return res.status(404).json({ error: 'Conjunto no encontrado' });
+
+    const {
+      name,
+      slug,
+      description,
+      heroImageUrl,
+      isActive,
+      platformCommissionPercent,
+      address,
+    } = req.body;
+
+    if (name !== undefined) building.name = name;
+    if (slug !== undefined) building.slug = slug;
+    if (description !== undefined) building.description = description;
+    if (heroImageUrl !== undefined) building.heroImageUrl = heroImageUrl;
+    if (isActive !== undefined) building.isActive = isActive;
+    if (platformCommissionPercent !== undefined) {
+      building.platformCommissionPercent = platformCommissionPercent;
+    }
+
+    if (address && typeof address === 'object') {
+      building.address = {
+        ...(building.address?.toObject?.() || building.address || {}),
+        ...address,
+      };
+      building.markModified('address');
+    }
+
+    await building.save();
     res.json({ building });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -1268,6 +1328,169 @@ router.delete('/restaurants/menu/items/:id', async (req, res) => {
     );
     if (!item) return res.status(404).json({ error: 'Plato no encontrado' });
     res.json({ item });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// —— Servicios públicos (utility providers) ——
+
+router.get('/utility-providers', async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.serviceType) filter.serviceType = req.query.serviceType;
+    if (req.query.city) filter.cityKeys = normalizeCity(req.query.city);
+    if (req.query.active === 'true') filter.isActive = { $ne: false };
+    if (req.query.active === 'false') filter.isActive = false;
+
+    const providers = await UtilityProvider.find(filter).sort({
+      serviceType: 1,
+      sortOrder: 1,
+      name: 1,
+    });
+
+    res.json({
+      serviceTypes: SERVICE_TYPES,
+      providers: providers.map(formatProvider),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/utility-providers', async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Nombre requerido' });
+    if (!SERVICE_TYPE_KEYS.includes(req.body.serviceType)) {
+      return res.status(400).json({ error: 'Tipo de servicio inválido' });
+    }
+
+    const cities = Array.isArray(req.body.cities)
+      ? req.body.cities.map((c) => String(c).trim()).filter(Boolean)
+      : String(req.body.cities || '')
+          .split(',')
+          .map((c) => c.trim())
+          .filter(Boolean);
+
+    const provider = await UtilityProvider.create({
+      name,
+      slug: (req.body.slug || slugify(name)).toLowerCase(),
+      serviceType: req.body.serviceType,
+      cities,
+      cityKeys: cities.map(normalizeCity),
+      accountCodeLabel: req.body.accountCodeLabel || 'Código de usuario',
+      accountCodeHelp: req.body.accountCodeHelp,
+      websiteUrl: req.body.websiteUrl,
+      paymentUrl: req.body.paymentUrl,
+      integrationStatus: req.body.integrationStatus || 'manual',
+      integrationNotes: req.body.integrationNotes,
+      logoUrl: req.body.logoUrl,
+      sortOrder: Number(req.body.sortOrder) || 0,
+      isActive: req.body.isActive !== false,
+    });
+
+    res.status(201).json({ provider: formatProvider(provider) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/utility-providers/:id', async (req, res) => {
+  try {
+    const allowed = [
+      'name',
+      'slug',
+      'serviceType',
+      'cities',
+      'accountCodeLabel',
+      'accountCodeHelp',
+      'websiteUrl',
+      'paymentUrl',
+      'integrationStatus',
+      'integrationNotes',
+      'logoUrl',
+      'sortOrder',
+      'isActive',
+    ];
+    const updates = Object.fromEntries(
+      Object.entries(req.body).filter(([key]) => allowed.includes(key))
+    );
+
+    if (updates.serviceType && !SERVICE_TYPE_KEYS.includes(updates.serviceType)) {
+      return res.status(400).json({ error: 'Tipo de servicio inválido' });
+    }
+    if (updates.cities != null) {
+      const cities = Array.isArray(updates.cities)
+        ? updates.cities.map((c) => String(c).trim()).filter(Boolean)
+        : String(updates.cities)
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean);
+      updates.cities = cities;
+      updates.cityKeys = cities.map(normalizeCity);
+    }
+    if (updates.slug) updates.slug = String(updates.slug).trim().toLowerCase();
+    if (updates.sortOrder != null) updates.sortOrder = Number(updates.sortOrder) || 0;
+
+    const provider = await UtilityProvider.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+    });
+    if (!provider) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    res.json({ provider: formatProvider(provider) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/utility-providers/:id', async (req, res) => {
+  try {
+    const provider = await UtilityProvider.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false },
+      { new: true }
+    );
+    if (!provider) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    res.json({ provider: formatProvider(provider) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/utility-bills', async (req, res) => {
+  try {
+    let account = null;
+    if (req.body.accountId) {
+      account = await ResidentUtilityAccount.findById(req.body.accountId);
+    } else if (req.body.providerId && req.body.accountCode) {
+      account = await ResidentUtilityAccount.findOne({
+        providerId: req.body.providerId,
+        accountCode: String(req.body.accountCode).trim(),
+        isActive: true,
+      });
+    }
+
+    if (!account) {
+      return res.status(404).json({
+        error: 'Cuenta de residente no encontrada. El residente debe vincular su código primero.',
+      });
+    }
+
+    const bill = await createUtilityBill(
+      {
+        accountId: account._id,
+        period: req.body.period,
+        amount: req.body.amount,
+        dueDate: req.body.dueDate,
+        issuedAt: req.body.issuedAt,
+        paymentUrl: req.body.paymentUrl,
+        externalBillId: req.body.externalBillId,
+        status: req.body.status,
+      },
+      { notify: req.body.notify !== false }
+    );
+
+    res.status(201).json({ bill });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

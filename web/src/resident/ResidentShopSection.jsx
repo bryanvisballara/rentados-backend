@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { formatMoney, residentApi } from '../api/client';
+import { formatDateTime, formatMoney, residentApi } from '../api/client';
 
 const STATUS_LABELS = {
   pending: 'Pendiente',
@@ -185,7 +185,7 @@ export default function ResidentShopSection({ shopData }) {
                 <div>
                   <p className="resident__shop-order-id">{order.orderNumber}</p>
                   <p className="resident__shop-order-meta">
-                    {new Date(order.createdAt).toLocaleString()} · {order.items.length} producto(s)
+                    {formatDateTime(order.createdAt)} · {order.items.length} producto(s)
                   </p>
                 </div>
                 <div className="resident__shop-order-right">

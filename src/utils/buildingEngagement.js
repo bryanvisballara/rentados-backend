@@ -77,6 +77,8 @@ async function getBuildingEngagementReport() {
       organizationId: building.organizationId?._id || building.organizationId,
       organizationName: building.organizationId?.name || '—',
       city: building.address?.city || '—',
+      state: building.address?.state || '—',
+      street: building.address?.street || '—',
       country: building.address?.country || '—',
       totalTowers,
       totalApartments: adoption.totalApartments,

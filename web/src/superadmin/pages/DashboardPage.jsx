@@ -67,10 +67,10 @@ export default function SuperAdminDashboardPage() {
           <p className="admin-stat__label">Prestadores activos</p>
           <p className="admin-stat__value">{counts.approvedProviders ?? 0}</p>
         </div>
-        <div className="admin-stat">
+        <Link to="/super-admin/cronograma-prestadores" className="admin-stat admin-stat--link">
           <p className="admin-stat__label">Entrevistas programadas</p>
           <p className="admin-stat__value">{counts.upcomingInterviews ?? 0}</p>
-        </div>
+        </Link>
         <Link to="/super-admin/shop" className="admin-stat admin-stat--link">
           <p className="admin-stat__label">Productos shop</p>
           <p className="admin-stat__value">{counts.shopProducts ?? 0}</p>

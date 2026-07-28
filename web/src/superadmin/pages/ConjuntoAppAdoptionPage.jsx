@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { platformApi } from '../../api/client';
+import { formatDate } from '../../utils/dateTime';
 import '../../admin/admin.css';
 import './ConjuntoAppAdoptionPage.css';
 
@@ -228,7 +229,7 @@ export default function ConjuntoAppAdoptionPage() {
                             {unit.latestFollowUp.visitorName
                               ? `${unit.latestFollowUp.visitorName} · `
                               : ''}
-                            {new Date(unit.latestFollowUp.createdAt).toLocaleDateString('es-CO')}
+                            {formatDate(unit.latestFollowUp.createdAt)}
                           </span>
                           {unit.latestFollowUp.notes && (
                             <span className="conjuntos-metric-sub">{unit.latestFollowUp.notes}</span>

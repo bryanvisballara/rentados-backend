@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { adminApi, formatCop } from '../../api/client';
+import { adminApi, formatCop, formatDate } from '../../api/client';
 import TimeSelectField from '../components/TimeSelectField';
 import { buildOpenHourSlots, formatOpenHoursRange } from '../../utils/openHours';
 import '../admin.css';
@@ -295,38 +295,40 @@ export default function FacilitiesPage() {
             />
             <span>24h — disponible todo el día, sin temporada ni horario fijo</span>
           </label>
-          <label>
-            Apertura temporada
-            <input
-              type="date"
-              value={form.seasonOpenDate}
-              onChange={(e) => setForm({ ...form, seasonOpenDate: e.target.value })}
+          <div className="admin-form__row admin-form__row--4 admin-form__row--season-hours">
+            <label>
+              Apertura temporada
+              <input
+                type="date"
+                value={form.seasonOpenDate}
+                onChange={(e) => setForm({ ...form, seasonOpenDate: e.target.value })}
+                disabled={form.open24Hours}
+              />
+            </label>
+            <label>
+              Cierre temporada
+              <input
+                type="date"
+                value={form.seasonCloseDate}
+                onChange={(e) => setForm({ ...form, seasonCloseDate: e.target.value })}
+                disabled={form.open24Hours}
+              />
+            </label>
+            <TimeSelectField
+              label="Hora apertura"
+              value={form.openStart}
+              onChange={(openStart) => setForm({ ...form, openStart })}
+              hint="Ej: 8 AM"
               disabled={form.open24Hours}
             />
-          </label>
-          <label>
-            Cierre temporada
-            <input
-              type="date"
-              value={form.seasonCloseDate}
-              onChange={(e) => setForm({ ...form, seasonCloseDate: e.target.value })}
+            <TimeSelectField
+              label="Hora cierre"
+              value={form.openEnd}
+              onChange={(openEnd) => setForm({ ...form, openEnd })}
+              hint="Ej: 10 PM = 10 + PM · 1 AM = 1 + AM (madrugada)"
               disabled={form.open24Hours}
             />
-          </label>
-          <TimeSelectField
-            label="Hora apertura"
-            value={form.openStart}
-            onChange={(openStart) => setForm({ ...form, openStart })}
-            hint="Ej: 8 AM"
-            disabled={form.open24Hours}
-          />
-          <TimeSelectField
-            label="Hora cierre"
-            value={form.openEnd}
-            onChange={(openEnd) => setForm({ ...form, openEnd })}
-            hint="Ej: 10 PM = 10 + PM · 1 AM = 1 + AM (madrugada)"
-            disabled={form.open24Hours}
-          />
+          </div>
           <p className="admin-hours-preview">
             Calendario de reservas:{' '}
             {formatOpenHoursRange(
@@ -561,7 +563,7 @@ export default function FacilitiesPage() {
                     {f.open24Hours
                       ? 'Todo el año'
                       : f.seasonOpenDate
-                        ? `${new Date(f.seasonOpenDate).toLocaleDateString()} – ${new Date(f.seasonCloseDate).toLocaleDateString()}`
+                        ? `${formatDate(f.seasonOpenDate)} – ${formatDate(f.seasonCloseDate)}`
                         : '—'}
                   </td>
                   <td>

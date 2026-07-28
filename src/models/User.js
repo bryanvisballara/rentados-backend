@@ -12,7 +12,7 @@ const STAFF_TYPES = ['porteria', 'contabilidad', 'general'];
 
 const userSchema = new mongoose.Schema(
   {
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
@@ -32,6 +32,7 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ role: 1, organizationId: 1 });
+userSchema.index({ organizationId: 1, email: 1 }, { unique: true });
 
 module.exports = mongoose.model('User', userSchema);
 module.exports.ROLES = ROLES;

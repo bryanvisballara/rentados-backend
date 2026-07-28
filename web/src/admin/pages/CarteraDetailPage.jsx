@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { adminApi, formatCop } from '../../api/client';
+import { adminApi, formatCop, formatDate } from '../../api/client';
 import { CARTERA_VIEWS } from '../carteraViews';
 import '../admin.css';
 
@@ -147,7 +147,7 @@ export default function CarteraDetailPage() {
                   <td>{formatCop(p.amount)}</td>
                   <td>{formatCop(p.interestAmount)}</td>
                   <td>{formatCop(p.totalDue ?? p.amount)}</td>
-                  <td>{new Date(p.dueDate).toLocaleDateString()}</td>
+                  <td>{formatDate(p.dueDate)}</td>
                   <td>
                     <span className={`admin-badge admin-badge--${p.status}`}>{p.status}</span>
                   </td>

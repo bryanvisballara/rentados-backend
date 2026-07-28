@@ -1,10 +1,5 @@
 import { useMemo, useState } from 'react';
-
-function formatResidentLabel(resident) {
-  const name = `${resident.userId?.firstName || ''} ${resident.userId?.lastName || ''}`.trim();
-  const unit = resident.unitId?.number ? `Apto ${resident.unitId.number}` : 'Sin unidad';
-  return `${name || 'Sin nombre'} · ${unit}`;
-}
+import { formatResidentLabel, matchResidentQuery } from '../../utils/residents';
 
 export default function ResidentSelectField({
   residents,
@@ -16,15 +11,8 @@ export default function ResidentSelectField({
   const [query, setQuery] = useState('');
 
   const filteredResidents = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return residents;
-
-    return residents.filter((resident) => {
-      const name = `${resident.userId?.firstName || ''} ${resident.userId?.lastName || ''}`.toLowerCase();
-      const email = resident.userId?.email?.toLowerCase() || '';
-      const unit = String(resident.unitId?.number || '').toLowerCase();
-      return name.includes(q) || email.includes(q) || unit.includes(q);
-    });
+    if (!query.trim()) return residents;
+    return residents.filter((resident) => matchResidentQuery(resident, query));
   }, [residents, query]);
 
   const valueInList = !value || filteredResidents.some((r) => r._id === value);
@@ -35,7 +23,7 @@ export default function ResidentSelectField({
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar por nombre, email o unidad"
+        placeholder="Buscar por nombre, email, código o unidad"
         aria-label="Buscar residente"
         className="admin-unit-picker__search"
       />
