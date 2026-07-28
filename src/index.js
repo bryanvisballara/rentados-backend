@@ -12,7 +12,16 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+const corsOrigins = String(process.env.CORS_ORIGIN || '*')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: corsOrigins.includes('*') || corsOrigins.length === 0 ? true : corsOrigins,
+  })
+);
 app.use(express.json());
 
 app.get('/health', (_req, res) => {

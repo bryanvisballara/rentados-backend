@@ -2,24 +2,49 @@ const { google } = require('googleapis');
 
 const GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
 
+function envValue(name) {
+  const raw = process.env[name];
+  if (raw == null) return '';
+  return String(raw).trim().replace(/^['"]|['"]$/g, '');
+}
+
+/** Si pegaron varias URLs separadas por coma, toma la primera válida. */
+function firstUrl(value) {
+  if (!value) return '';
+  const parts = String(value)
+    .split(/[,\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const withScheme = parts.find((part) => /^https?:\/\//i.test(part));
+  return (withScheme || parts[0] || '').replace(/\/$/, '');
+}
+
 function isGmailOAuthConfigured() {
   return Boolean(
-    process.env.GOOGLE_CLIENT_ID &&
-      process.env.GOOGLE_CLIENT_SECRET &&
-      (process.env.GOOGLE_REDIRECT_URI || process.env.APP_API_URL)
+    envValue('GOOGLE_CLIENT_ID') &&
+      envValue('GOOGLE_CLIENT_SECRET') &&
+      (firstUrl(envValue('GOOGLE_REDIRECT_URI')) || firstUrl(envValue('APP_API_URL')))
   );
 }
 
 function getRedirectUri() {
-  if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
-  const base = process.env.APP_API_URL || `http://localhost:${process.env.PORT || 3000}`;
+  const explicit = firstUrl(envValue('GOOGLE_REDIRECT_URI'));
+  if (explicit) {
+    // Si solo pusieron el origen, completa el path del callback.
+    if (!/\/api\/v1\/auth\/gmail\/callback\/?$/i.test(explicit)) {
+      return `${explicit.replace(/\/$/, '')}/api/v1/auth/gmail/callback`;
+    }
+    return explicit;
+  }
+  const base = firstUrl(envValue('APP_API_URL')) || `http://localhost:${process.env.PORT || 3000}`;
   return `${base.replace(/\/$/, '')}/api/v1/auth/gmail/callback`;
 }
 
 function getWebAppUrl() {
-  return (process.env.APP_WEB_URL || process.env.CORS_ORIGIN || 'http://localhost:5578').replace(
-    /\/$/,
-    ''
+  return (
+    firstUrl(envValue('APP_WEB_URL')) ||
+    firstUrl(envValue('CORS_ORIGIN')) ||
+    'http://localhost:5578'
   );
 }
 
@@ -30,8 +55,8 @@ function createOAuthClient() {
     );
   }
   return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
+    envValue('GOOGLE_CLIENT_ID'),
+    envValue('GOOGLE_CLIENT_SECRET'),
     getRedirectUri()
   );
 }
