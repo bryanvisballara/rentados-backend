@@ -232,8 +232,8 @@ export default function ResidentPublicServicesPage() {
       const created = result.summary?.created || 0;
       setSuccess(
         created > 0
-          ? `Se importaron ${created} factura(s) de Air-e desde tu Gmail.`
-          : 'Sincronización lista. No hay facturas nuevas de Air-e.'
+          ? `Se importaron ${created} factura(s) desde tu Gmail (Air-e / Gases del Caribe).`
+          : 'Sincronización lista. No hay facturas nuevas de Air-e o Gases del Caribe.'
       );
     } catch (err) {
       setError(err.message);
@@ -298,8 +298,8 @@ export default function ResidentPublicServicesPage() {
             <section className="resident-card" style={{ marginBottom: '1rem' }}>
               <h2 className="resident-util-section-title">Facturas por correo</h2>
               <p className="resident-util-meta" style={{ marginBottom: '0.75rem' }}>
-                Conecta Gmail (solo lectura). Cuando Air-e envíe la factura, Rentados la detecta,
-                guarda el PDF y te avisa con el valor.
+                Conecta Gmail (solo lectura). Detectamos facturas de <strong>Air-e</strong> y{' '}
+                <strong>Gases del Caribe</strong>, guardamos el PDF y te avisamos con el valor.
                 {gmail?.pushEnabled
                   ? ' Avisos casi en tiempo real activos.'
                   : gmail?.pushConfigured
@@ -330,7 +330,7 @@ export default function ResidentPublicServicesPage() {
                       className="resident-util-btn-secondary"
                       onClick={() => setView('guide')}
                     >
-                      ¿No te llegan correos de Air-e?
+                      ¿No te llegan correos de factura?
                     </button>
                   </div>
                 </>
@@ -665,12 +665,13 @@ export default function ResidentPublicServicesPage() {
 
         {view === 'guide' && (
           <section className="resident-card">
-            <h2 className="resident-util-section-title">Guía: factura Air-e por correo</h2>
+            <h2 className="resident-util-section-title">Guía: factura por correo</h2>
             <p className="resident-util-meta" style={{ marginBottom: '1rem' }}>
-              Para que Rentados te avise solo, Air-e debe enviarte la factura al mismo Gmail que
-              conectes aquí.
+              Para que Rentados te avise solo, el proveedor debe enviarte la factura al mismo Gmail
+              que conectes aquí.
             </p>
 
+            <h3 className="resident-util-section-title">1) Air-e (energía)</h3>
             <ol className="resident-util-guide">
               <li>
                 <strong>Ten tu NIC a la mano</strong>
@@ -678,10 +679,6 @@ export default function ResidentPublicServicesPage() {
               </li>
               <li>
                 <strong>Pide la facturación electrónica</strong>
-                <span>
-                  Usa uno de estos canales oficiales y pide que la factura digital llegue a tu
-                  correo:
-                </span>
                 <div className="resident-util-guide__actions">
                   <a
                     href="https://www.air-e.com"
@@ -699,43 +696,69 @@ export default function ResidentPublicServicesPage() {
                   >
                     WhatsApp 313 430 0000
                   </a>
-                  <a
-                    href="tel:115"
-                    className="resident-util-link-btn resident-util-btn-secondary"
-                  >
+                  <a href="tel:115" className="resident-util-link-btn resident-util-btn-secondary">
                     Línea 115
                   </a>
                 </div>
               </li>
               <li>
                 <strong>Confirma el correo</strong>
-                <span>
-                  Debe ser el mismo Gmail que vas a conectar en Rentados. Si usas otro correo, no
-                  podremos detectar la factura.
-                </span>
+                <span>Debe ser el mismo Gmail conectado en Rentados.</span>
+              </li>
+            </ol>
+
+            <h3 className="resident-util-section-title" style={{ marginTop: '1.25rem' }}>
+              2) Gases del Caribe
+            </h3>
+            <ol className="resident-util-guide">
+              <li>
+                <strong>Ten tu código / contrato</strong>
+                <span>El número de contrato o código de usuario de tu factura de gas.</span>
               </li>
               <li>
-                <strong>Espera el primer correo de prueba</strong>
+                <strong>Activa la factura digital</strong>
                 <span>
-                  Busca remitente tipo <em>entrega.de.factura.AIR-E@air-e.com</em> con un ZIP
-                  (XML + PDF).
+                  En el portal crea o inicia sesión, asocia tu contrato y elige correo como canal de
+                  envío.
                 </span>
+                <div className="resident-util-guide__actions">
+                  <a
+                    href="https://portal.gascaribe.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="resident-util-link-btn resident-util-btn-secondary"
+                  >
+                    Portal Gascaribe
+                  </a>
+                  <a
+                    href="https://www.gascaribe.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="resident-util-link-btn resident-util-btn-secondary"
+                  >
+                    gascaribe.com
+                  </a>
+                  <a
+                    href="https://wa.me/576053227000"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="resident-util-link-btn resident-util-btn-secondary"
+                  >
+                    WhatsApp (605) 322 7000
+                  </a>
+                </div>
               </li>
               <li>
-                <strong>Conecta Gmail en Rentados</strong>
+                <strong>Vincula el código en Rentados</strong>
                 <span>
-                  Vuelve a Servicios públicos → Conectar Gmail → Buscar facturas ahora. Verás el
-                  valor, el vencimiento y podrás abrir el PDF guardado.
+                  En Servicios públicos → Gas natural → Gases del Caribe → guarda tu código. Luego
+                  Conectar Gmail / Buscar facturas.
                 </span>
               </li>
             </ol>
 
             <div className="resident-util-form" style={{ marginTop: '1rem' }}>
-              <button
-                type="button"
-                disabled={busy || gmail?.connected}
-                onClick={connectGmail}
-              >
+              <button type="button" disabled={busy || gmail?.connected} onClick={connectGmail}>
                 {gmail?.connected ? 'Gmail ya conectado' : 'Conectar Gmail ahora'}
               </button>
               <button type="button" className="resident-util-btn-secondary" onClick={goHome}>

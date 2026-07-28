@@ -355,7 +355,20 @@ function buildProviderLookupHint(account) {
       accountCode: account.accountCode,
       accountCodeLabel: provider?.accountCodeLabel || 'NIC',
       message:
-        'Además del portal (con reCAPTCHA), puedes conectar Gmail para que Rentados lea el correo de factura de Air-e (ZIP/XML) y te avise con el valor y la fecha de vencimiento.',
+        'Además del portal, puedes conectar Gmail para que Rentados lea el correo de factura de Air-e (ZIP/XML/PDF) y te avise con el valor y la fecha de vencimiento.',
+      canAutoFetch: false,
+    };
+  }
+
+  if (slug === 'gases-del-caribe' || /gases?\s+del\s+caribe|gascaribe/i.test(provider?.name || '')) {
+    return {
+      mode: 'portal_manual',
+      providerSlug: slug,
+      paymentUrl: paymentUrl || 'https://portal.gascaribe.com',
+      accountCode: account.accountCode,
+      accountCodeLabel: provider?.accountCodeLabel || 'Código / contrato',
+      message:
+        'Conecta Gmail para detectar facturas de Gases del Caribe. Activa la factura digital en portal.gascaribe.com con el mismo correo.',
       canAutoFetch: false,
     };
   }

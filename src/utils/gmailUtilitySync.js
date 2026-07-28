@@ -15,7 +15,7 @@ const {
   gmailClientFromRefreshToken,
   getWebAppUrl,
 } = require('./gmailOAuth');
-const { gmailAirESearchQuery, parseAirEEmailPayload } = require('./airEBillEmail');
+const { gmailUtilityBillsSearchQuery, detectUtilityEmailProvider, parseUtilityEmail } = require('./utilityEmailProviders');
 const { createUtilityBill } = require('./utilityBilling');
 const { uploadUtilityBillPdf } = require('./utilityBillMedia');
 
@@ -206,52 +206,61 @@ function flattenParts(payload, out = []) {
   return out;
 }
 
-async function findAirEProvider() {
+async function findProviderBySlug(slug) {
   return UtilityProvider.findOne({
-    slug: 'aire-energia',
+    slug,
     isActive: { $ne: false },
   });
 }
 
-async function matchAccountForNic({ residentId, userId, nic, providerId }) {
-  if (!nic) return null;
+async function matchAccountForCode({ residentId, userId, accountCode, providerId }) {
+  if (!accountCode) return null;
   return ResidentUtilityAccount.findOne({
     residentId,
     userId,
     providerId,
     isActive: true,
-    accountCode: String(nic).trim(),
+    accountCode: String(accountCode).trim(),
   });
 }
 
 async function ingestParsedBill({ resident, user, messageId, subject, parsed }) {
-  const provider = await findAirEProvider();
+  const providerSlug = parsed.providerSlug || 'aire-energia';
+  const provider = await findProviderBySlug(providerSlug);
   if (!provider) {
-    return { status: 'skipped', reason: 'Proveedor Air-e no configurado en catálogo' };
+    return { status: 'skipped', reason: `Proveedor ${providerSlug} no configurado en catálogo` };
   }
 
-  if (!parsed.nic) {
-    return { status: 'skipped', reason: 'No se pudo leer el NIC del correo/adjunto' };
+  const accountCode = parsed.accountCode || parsed.nic;
+  if (!accountCode) {
+    return {
+      status: 'skipped',
+      reason: `No se pudo leer el ${provider.accountCodeLabel || 'código'} del correo/adjunto`,
+    };
   }
   if (parsed.amount == null || Number(parsed.amount) <= 0) {
-    return { status: 'skipped', reason: `NIC ${parsed.nic}: no se pudo leer el valor de la factura` };
+    return {
+      status: 'skipped',
+      reason: `${provider.accountCodeLabel || 'Código'} ${accountCode}: no se pudo leer el valor de la factura`,
+    };
   }
 
-  const account = await matchAccountForNic({
+  const account = await matchAccountForCode({
     residentId: resident._id,
     userId: user._id,
-    nic: parsed.nic,
+    accountCode,
     providerId: provider._id,
   });
 
   if (!account) {
     return {
       status: 'skipped',
-      reason: `Factura NIC ${parsed.nic} no coincide con tu NIC vinculado en Rentados`,
+      reason: `Factura ${provider.accountCodeLabel || 'código'} ${accountCode} no coincide con tu cuenta vinculada de ${provider.name}`,
     };
   }
 
-  const externalBillId = parsed.defr || parsed.idCobro || `gmail:${messageId}`;
+  const externalBillId =
+    parsed.externalBillId || parsed.defr || parsed.idCobro || `gmail:${messageId}`;
 
   const existing = await UtilityBill.findOne({
     accountId: account._id,
@@ -262,7 +271,7 @@ async function ingestParsedBill({ resident, user, messageId, subject, parsed }) 
       const uploaded = await uploadUtilityBillPdf(parsed.pdfBuffer, {
         organizationId: account.organizationId,
         fileName: parsed.pdfFileName,
-        nic: parsed.nic,
+        nic: accountCode,
       });
       if (uploaded) {
         existing.documentUrl = uploaded.url;
@@ -281,7 +290,7 @@ async function ingestParsedBill({ resident, user, messageId, subject, parsed }) 
       document = await uploadUtilityBillPdf(parsed.pdfBuffer, {
         organizationId: account.organizationId,
         fileName: parsed.pdfFileName,
-        nic: parsed.nic,
+        nic: accountCode,
       });
     } catch (err) {
       console.warn('No se pudo guardar PDF de factura:', err.message);
@@ -303,6 +312,7 @@ async function ingestParsedBill({ resident, user, messageId, subject, parsed }) 
       documentMimeType: document?.mimeType,
       rawPayload: {
         source: 'gmail',
+        providerSlug,
         messageId,
         subject,
         parsed: {
@@ -315,6 +325,24 @@ async function ingestParsedBill({ resident, user, messageId, subject, parsed }) 
   );
 
   return { status: 'created', bill };
+}
+
+function extractBodyText(payload) {
+  const parts = [];
+  function walk(node) {
+    if (!node) return;
+    const mime = String(node.mimeType || '').toLowerCase();
+    if ((mime === 'text/plain' || mime === 'text/html') && node.body?.data) {
+      const decoded = Buffer.from(
+        String(node.body.data).replace(/-/g, '+').replace(/_/g, '/'),
+        'base64'
+      ).toString('utf8');
+      parts.push(decoded.replace(/<[^>]+>/g, ' '));
+    }
+    (node.parts || []).forEach(walk);
+  }
+  walk(payload);
+  return parts.join('\n').slice(0, 20000);
 }
 
 async function processGmailMessage({ gmail, user, resident, messageId, processed, summary }) {
@@ -331,7 +359,11 @@ async function processGmailMessage({ gmail, user, resident, messageId, processed
   const headers = full.data.payload?.headers || [];
   const subject = headers.find((h) => h.name?.toLowerCase() === 'subject')?.value || '';
   const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value || '';
-  if (!/air-?e/i.test(`${from} ${subject}`)) {
+  const bodyText = extractBodyText(full.data.payload);
+  const snippet = full.data.snippet || '';
+
+  const provider = detectUtilityEmailProvider(from, subject, `${bodyText}\n${snippet}`);
+  if (!provider) {
     summary.skipped += 1;
     processed.add(messageId);
     return;
@@ -345,18 +377,25 @@ async function processGmailMessage({ gmail, user, resident, messageId, processed
 
   if (!zipOrXmlOrPdf?.body?.attachmentId) {
     summary.skipped += 1;
-    summary.errors.push({ messageId, reason: 'Sin adjunto ZIP/XML/PDF' });
+    summary.errors.push({ messageId, reason: `${provider.label}: sin adjunto ZIP/XML/PDF` });
     processed.add(messageId);
     return;
   }
 
   const buffer = await downloadAttachment(gmail, messageId, zipOrXmlOrPdf.body.attachmentId);
-  const parsed = parseAirEEmailPayload({
+  const parsed = parseUtilityEmail(provider, {
     subject,
+    bodyText: `${bodyText}\n${snippet}`,
     attachmentName: zipOrXmlOrPdf.filename,
     attachmentBuffer: buffer,
     attachmentMime: zipOrXmlOrPdf.mimeType,
   });
+
+  if (!parsed) {
+    summary.skipped += 1;
+    processed.add(messageId);
+    return;
+  }
 
   const result = await ingestParsedBill({
     resident,
@@ -374,10 +413,10 @@ async function processGmailMessage({ gmail, user, resident, messageId, processed
   processed.add(messageId);
 }
 
-async function syncAirEBillsFromGmail({ user, resident, maxMessages = 20 } = {}) {
+async function syncAirEBillsFromGmail({ user, resident, maxMessages = 25 } = {}) {
   const connection = await GmailConnection.findOne({ userId: user._id, isActive: true });
   if (!connection) {
-    throw new Error('Conecta Gmail primero para importar facturas de Air-e');
+    throw new Error('Conecta Gmail primero para importar facturas de servicios públicos');
   }
 
   const refreshToken = decryptSecret(connection.refreshTokenEnc);
@@ -394,7 +433,7 @@ async function syncAirEBillsFromGmail({ user, resident, maxMessages = 20 } = {})
 
   const list = await gmail.users.messages.list({
     userId: 'me',
-    q: gmailAirESearchQuery(),
+    q: gmailUtilityBillsSearchQuery(),
     maxResults: maxMessages,
   });
 

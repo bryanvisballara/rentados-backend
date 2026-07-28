@@ -40,10 +40,13 @@ const BARRANQUILLA_PROVIDERS = [
     slug: 'gases-del-caribe',
     serviceType: 'gas',
     cities: ['Barranquilla'],
-    accountCodeLabel: 'Código de usuario',
-    websiteUrl: 'https://www.gasesdelcaribe.com',
-    paymentUrl: 'https://www.gasesdelcaribe.com',
+    accountCodeLabel: 'Código / contrato',
+    accountCodeHelp: 'Número de contrato o código de usuario que aparece en tu factura de gas.',
+    websiteUrl: 'https://www.gascaribe.com',
+    paymentUrl: 'https://portal.gascaribe.com',
     integrationStatus: 'manual',
+    integrationNotes:
+      'Gmail: correos de gascaribe.com con PDF/ZIP. Activar factura digital en portal.gascaribe.com.',
     sortOrder: 1,
   },
   {
