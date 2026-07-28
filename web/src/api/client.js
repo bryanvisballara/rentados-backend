@@ -322,7 +322,7 @@ export const residentApi = {
     gmailStatus: () => api('/resident/utilities/gmail'),
     gmailConnect: () => api('/resident/utilities/gmail/connect', { method: 'POST' }),
     gmailSync: (body = {}) =>
-      api('/resident/utilities/gmail/sync', { method: 'POST', body: JSON.stringify(body) }),
+      api('/resident/utilities/gmail/sync', { method: 'POST', body }),
     gmailDisconnect: () => api('/resident/utilities/gmail', { method: 'DELETE' }),
     bills: (params = {}) => {
       const q = buildQueryString(params);
