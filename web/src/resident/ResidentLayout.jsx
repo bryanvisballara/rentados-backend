@@ -16,7 +16,7 @@ import './ResidentHomePage.css';
 const NAV = [
   { to: '/app', label: 'Inicio', end: true, Icon: IconHome },
   { to: '/app/administracion', label: 'Admin', Icon: IconBuilding },
-  { to: '/app/servicios-publicos', label: 'Servicios', Icon: IconGrid },
+  { to: '/app/servicios-publicos', label: 'Facturas', Icon: IconGrid },
   { to: '/app/prestadores', label: 'Prestadores', Icon: IconUsers },
   { to: '/app/shop', label: 'Shop', Icon: IconBag },
   { to: '/app/restaurantes', label: 'Restaurantes', Icon: IconUtensils },

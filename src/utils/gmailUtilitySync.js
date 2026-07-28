@@ -15,7 +15,7 @@ const {
   gmailClientFromRefreshToken,
   getWebAppUrl,
 } = require('./gmailOAuth');
-const { gmailUtilityBillsSearchQuery, detectUtilityEmailProvider, parseUtilityEmail } = require('./utilityEmailProviders');
+const { gmailSmartInvoiceSearchQuery, analyzeInvoiceCandidate, isAiInvoiceConfigured } = require('./invoiceIntelligence');
 const { createUtilityBill } = require('./utilityBilling');
 const { uploadUtilityBillPdf } = require('./utilityBillMedia');
 
@@ -42,6 +42,7 @@ function formatGmailStatus(connection) {
       connected: false,
       configured: isGmailOAuthConfigured(),
       pushConfigured: isGmailPushConfigured(),
+      aiConfigured: isAiInvoiceConfigured(),
       googleEmail: null,
       lastSyncAt: null,
       lastSyncStatus: 'never',
@@ -55,6 +56,7 @@ function formatGmailStatus(connection) {
     connected: connection.isActive !== false,
     configured: isGmailOAuthConfigured(),
     pushConfigured: isGmailPushConfigured(),
+    aiConfigured: isAiInvoiceConfigured(),
     googleEmail: connection.googleEmail,
     lastSyncAt: connection.lastSyncAt,
     lastSyncStatus: connection.lastSyncStatus,
@@ -224,38 +226,81 @@ async function matchAccountForCode({ residentId, userId, accountCode, providerId
   });
 }
 
-async function ingestParsedBill({ resident, user, messageId, subject, parsed }) {
-  const providerSlug = parsed.providerSlug || 'aire-energia';
-  const provider = await findProviderBySlug(providerSlug);
-  if (!provider) {
-    return { status: 'skipped', reason: `Proveedor ${providerSlug} no configurado en catálogo` };
+async function ingestParsedBill({ resident, user, messageId, subject, parsed, linkedAccounts = [] }) {
+  if (!parsed?.isInvoice && parsed?.source === 'reject') {
+    return { status: 'skipped', reason: 'No parece una factura' };
   }
 
   const accountCode = parsed.accountCode || parsed.nic;
+  let providerSlug = parsed.providerSlug || null;
+  let provider = providerSlug ? await findProviderBySlug(providerSlug) : null;
+
+  // Si hay código, intenta casar con cuentas vinculadas aunque el slug venga incompleto.
+  let account = null;
+  if (accountCode) {
+    if (provider) {
+      account = await matchAccountForCode({
+        residentId: resident._id,
+        userId: user._id,
+        accountCode,
+        providerId: provider._id,
+      });
+    }
+    if (!account) {
+      const codeMatches = linkedAccounts.filter(
+        (item) => String(item.accountCode).trim() === String(accountCode).trim()
+      );
+      if (codeMatches.length === 1) {
+        account = await ResidentUtilityAccount.findById(codeMatches[0].id).populate('providerId');
+        provider = account?.providerId || provider;
+        providerSlug = provider?.slug || providerSlug;
+      }
+    }
+  }
+
+  // Una sola cuenta vinculada del proveedor detectado.
+  if (!account && provider) {
+    const sameProvider = linkedAccounts.filter((item) => item.providerSlug === provider.slug);
+    if (sameProvider.length === 1 && accountCode && sameProvider[0].accountCode === accountCode) {
+      account = await ResidentUtilityAccount.findById(sameProvider[0].id).populate('providerId');
+    }
+  }
+
+  if (!provider) {
+    return {
+      status: 'skipped',
+      reason: parsed.companyName
+        ? `Detectamos factura de ${parsed.companyName}, pero aún no hay proveedor/cuenta vinculada`
+        : 'No se pudo identificar la empresa de la factura',
+    };
+  }
+
   if (!accountCode) {
     return {
       status: 'skipped',
-      reason: `No se pudo leer el ${provider.accountCodeLabel || 'código'} del correo/adjunto`,
+      reason: `No se pudo leer el ${provider.accountCodeLabel || 'código'} de la factura de ${provider.name}`,
     };
   }
   if (parsed.amount == null || Number(parsed.amount) <= 0) {
     return {
       status: 'skipped',
-      reason: `${provider.accountCodeLabel || 'Código'} ${accountCode}: no se pudo leer el valor de la factura`,
+      reason: `${provider.name}: no se pudo leer el valor de la factura`,
     };
   }
 
-  const account = await matchAccountForCode({
-    residentId: resident._id,
-    userId: user._id,
-    accountCode,
-    providerId: provider._id,
-  });
+  if (!account) {
+    account = await matchAccountForCode({
+      residentId: resident._id,
+      userId: user._id,
+      accountCode,
+      providerId: provider._id,
+    });
+  }
 
   if (!account) {
     return {
       status: 'skipped',
-      reason: `Factura ${provider.accountCodeLabel || 'código'} ${accountCode} no coincide con tu cuenta vinculada de ${provider.name}`,
+      reason: `Factura de ${provider.name} (${provider.accountCodeLabel || 'código'} ${accountCode}) no coincide con tus cuentas vinculadas`,
     };
   }
 
@@ -305,16 +350,19 @@ async function ingestParsedBill({ resident, user, messageId, subject, parsed }) 
       issuedAt: parsed.issuedAt || new Date(),
       period: parsed.period,
       externalBillId,
-      paymentUrl: provider.paymentUrl,
+      paymentUrl: provider.paymentUrl || provider.websiteUrl,
       documentUrl: document?.url,
       documentPublicId: document?.cloudinaryPublicId,
       documentFileName: document?.fileName,
       documentMimeType: document?.mimeType,
       rawPayload: {
-        source: 'gmail',
-        providerSlug,
+        source: 'smart_invoice_center',
+        extractionSource: parsed.source,
+        companyName: parsed.companyName,
+        confidence: parsed.confidence,
         messageId,
         subject,
+        notes: parsed.notes,
         parsed: {
           ...parsed,
           pdfBuffer: undefined,
@@ -324,7 +372,7 @@ async function ingestParsedBill({ resident, user, messageId, subject, parsed }) 
     { notify: true }
   );
 
-  return { status: 'created', bill };
+  return { status: 'created', bill, provider: provider.name };
 }
 
 function extractBodyText(payload) {
@@ -345,7 +393,23 @@ function extractBodyText(payload) {
   return parts.join('\n').slice(0, 20000);
 }
 
-async function processGmailMessage({ gmail, user, resident, messageId, processed, summary }) {
+async function loadLinkedAccounts(resident, user) {
+  const accounts = await ResidentUtilityAccount.find({
+    residentId: resident._id,
+    userId: user._id,
+    isActive: true,
+  }).populate('providerId');
+
+  return accounts.map((account) => ({
+    id: account._id,
+    accountCode: account.accountCode,
+    serviceType: account.serviceType,
+    providerSlug: account.providerId?.slug,
+    providerName: account.providerId?.name,
+  }));
+}
+
+async function processGmailMessage({ gmail, user, resident, messageId, processed, summary, linkedAccounts }) {
   if (processed.has(messageId)) {
     summary.skipped += 1;
     return;
@@ -362,13 +426,6 @@ async function processGmailMessage({ gmail, user, resident, messageId, processed
   const bodyText = extractBodyText(full.data.payload);
   const snippet = full.data.snippet || '';
 
-  const provider = detectUtilityEmailProvider(from, subject, `${bodyText}\n${snippet}`);
-  if (!provider) {
-    summary.skipped += 1;
-    processed.add(messageId);
-    return;
-  }
-
   const parts = flattenParts(full.data.payload);
   const zipOrXmlOrPdf = parts.find((p) => {
     const name = (p.filename || '').toLowerCase();
@@ -377,21 +434,22 @@ async function processGmailMessage({ gmail, user, resident, messageId, processed
 
   if (!zipOrXmlOrPdf?.body?.attachmentId) {
     summary.skipped += 1;
-    summary.errors.push({ messageId, reason: `${provider.label}: sin adjunto ZIP/XML/PDF` });
     processed.add(messageId);
     return;
   }
 
   const buffer = await downloadAttachment(gmail, messageId, zipOrXmlOrPdf.body.attachmentId);
-  const parsed = parseUtilityEmail(provider, {
+  const analyzed = await analyzeInvoiceCandidate({
+    from,
     subject,
     bodyText: `${bodyText}\n${snippet}`,
-    attachmentName: zipOrXmlOrPdf.filename,
+    fileName: zipOrXmlOrPdf.filename,
     attachmentBuffer: buffer,
     attachmentMime: zipOrXmlOrPdf.mimeType,
+    linkedAccounts,
   });
 
-  if (!parsed) {
+  if (!analyzed?.isInvoice) {
     summary.skipped += 1;
     processed.add(messageId);
     return;
@@ -402,21 +460,25 @@ async function processGmailMessage({ gmail, user, resident, messageId, processed
     user,
     messageId,
     subject,
-    parsed,
+    parsed: analyzed,
+    linkedAccounts,
   });
 
-  if (result.status === 'created') summary.created += 1;
-  else {
+  if (result.status === 'created') {
+    summary.created += 1;
+    summary.imported = summary.imported || [];
+    summary.imported.push(result.provider || analyzed.companyName || 'Factura');
+  } else {
     summary.skipped += 1;
     if (result.reason) summary.errors.push({ messageId, reason: result.reason });
   }
   processed.add(messageId);
 }
 
-async function syncAirEBillsFromGmail({ user, resident, maxMessages = 25 } = {}) {
+async function syncAirEBillsFromGmail({ user, resident, maxMessages = 30 } = {}) {
   const connection = await GmailConnection.findOne({ userId: user._id, isActive: true });
   if (!connection) {
-    throw new Error('Conecta Gmail primero para importar facturas de servicios públicos');
+    throw new Error('Conecta Gmail primero para el Centro Inteligente de Facturas');
   }
 
   const refreshToken = decryptSecret(connection.refreshTokenEnc);
@@ -431,14 +493,22 @@ async function syncAirEBillsFromGmail({ user, resident, maxMessages = 25 } = {})
     connection.lastSyncError = `Watch Pub/Sub: ${err.message}`;
   }
 
+  const linkedAccounts = await loadLinkedAccounts(resident, user);
   const list = await gmail.users.messages.list({
     userId: 'me',
-    q: gmailUtilityBillsSearchQuery(),
+    q: gmailSmartInvoiceSearchQuery(),
     maxResults: maxMessages,
   });
 
   const messages = list.data.messages || [];
-  const summary = { scanned: messages.length, created: 0, skipped: 0, errors: [] };
+  const summary = {
+    scanned: messages.length,
+    created: 0,
+    skipped: 0,
+    errors: [],
+    imported: [],
+    aiEnabled: isAiInvoiceConfigured(),
+  };
   const processed = new Set(connection.processedMessageIds || []);
 
   for (const item of messages) {
@@ -450,6 +520,7 @@ async function syncAirEBillsFromGmail({ user, resident, maxMessages = 25 } = {})
         messageId: item.id,
         processed,
         summary,
+        linkedAccounts,
       });
     } catch (err) {
       summary.skipped += 1;
@@ -461,7 +532,7 @@ async function syncAirEBillsFromGmail({ user, resident, maxMessages = 25 } = {})
   connection.historyId = profile.data.historyId
     ? String(profile.data.historyId)
     : connection.historyId;
-  connection.processedMessageIds = Array.from(processed).slice(-200);
+  connection.processedMessageIds = Array.from(processed).slice(-300);
   connection.lastSyncAt = new Date();
   connection.lastSyncStatus = summary.errors.length && summary.created === 0 ? 'partial' : 'ok';
   connection.lastSyncSummary = {
