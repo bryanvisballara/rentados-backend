@@ -12,10 +12,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
-const corsOrigins = String(process.env.CORS_ORIGIN || '*')
+const configuredOrigins = String(process.env.CORS_ORIGIN || '*')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+const appOrigins = ['https://rentados.app', 'https://www.rentados.app'];
+const corsOrigins = configuredOrigins.includes('*')
+  ? configuredOrigins
+  : [...new Set([...configuredOrigins, ...appOrigins])];
 
 app.use(
   cors({
