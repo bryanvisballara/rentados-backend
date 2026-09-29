@@ -186,14 +186,12 @@ async function parseGasesDelCaribeEmail({
   };
 }
 
-function gmailUtilityBillsSearchQuery({ newerThanDays = 180 } = {}) {
-  // Remitentes conocidos; no exige filename:pdf (Gmail a veces no lo indexa igual).
+function gmailUtilityBillsSearchQuery({ newerThanDays = 365 } = {}) {
   return [
-    '(',
     'from:(air-e.com OR gascaribe.com OR gasesdelcaribe.com OR gasesdelcaribe.com.co)',
-    'OR subject:(Air-e OR AIR-E OR DEFR OR gascaribe OR "gases del caribe" OR "Gases del Caribe")',
-    ')',
-    '(factura OR recibo OR DEFR OR gas OR Air-e OR AIR-E OR gascaribe OR attachment)',
+    '(factura OR recibo OR DEFR OR gascaribe OR "gases del caribe" OR Air-e OR AIR-E)',
+    '(has:attachment OR filename:pdf OR filename:zip OR filename:xml)',
+    '-subject:confirmación -subject:confirmacion -subject:"confirmación de transacción"',
     `newer_than:${newerThanDays}d`,
   ].join(' ');
 }

@@ -1,4 +1,5 @@
 const { Resident, ResidentNotification } = require('../models');
+const { sendPushToUsers } = require('./pushNotifications');
 
 async function notifyUnitResidents({
   organization,
@@ -37,6 +38,18 @@ async function notifyUnitResidents({
       read: false,
       pushSent: false,
     });
+
+    sendPushToUsers([resident.userId._id], {
+      title,
+      body,
+      url: '/app',
+    })
+      .then(async () => {
+        notification.pushSent = true;
+        notification.pushSentAt = new Date();
+        await notification.save();
+      })
+      .catch(() => {});
 
     created.push(notification);
   }

@@ -79,23 +79,49 @@ function findLinkedAccountCodeInText(text, linkedAccounts = []) {
   return null;
 }
 
-function gmailSmartInvoiceSearchQuery({ newerThanDays = 180 } = {}) {
+function gmailSmartInvoiceSearchQuery({ newerThanDays = 365 } = {}) {
   return [
-    '(',
     'has:attachment',
-    'OR from:(air-e.com OR gascaribe.com OR gasesdelcaribe.com OR gasesdelcaribe.com.co)',
-    ')',
+    '(filename:pdf OR filename:zip OR filename:xml)',
     '(',
-    'factura OR recibo OR invoice OR "total a pagar" OR vencimiento OR DEFR',
-    'OR air-e OR aire OR gascaribe OR "gases del caribe" OR "triple a" OR aaa',
+    'factura OR recibo OR invoice OR DEFR OR "total a pagar" OR vencimiento',
+    'OR air-e OR gascaribe OR "gases del caribe" OR "triple a" OR aaa',
     'OR claro OR movistar OR tigo OR ruitoque',
     ')',
+    '-subject:confirmación -subject:confirmacion -subject:"confirmación de transacción"',
+    '-subject:"transaction confirmation"',
     `newer_than:${newerThanDays}d`,
   ].join(' ');
 }
 
-function gmailInvoiceSearchQueries({ newerThanDays = 180 } = {}) {
+function gmailProviderAttachmentQueries({ newerThanDays = 365 } = {}) {
+  const window = `newer_than:${newerThanDays}d`;
   return [
+    // Air-e: ZIP/XML/PDF de facturación
+    [
+      'from:(air-e.com)',
+      '(filename:pdf OR filename:zip OR filename:xml OR subject:DEFR OR subject:factura)',
+      window,
+    ].join(' '),
+    // Gases del Caribe: factura con adjunto
+    [
+      'from:(gascaribe.com OR gasesdelcaribe.com OR gasesdelcaribe.com.co)',
+      '(filename:pdf OR filename:zip OR factura OR recibo)',
+      '-subject:confirmación -subject:confirmacion',
+      window,
+    ].join(' '),
+    // Asunto explícito de factura + PDF (cualquier remitente)
+    [
+      'has:attachment filename:pdf',
+      '(subject:factura OR subject:recibo OR subject:DEFR OR subject:"gases del caribe" OR subject:Air-e OR subject:AIR-E)',
+      window,
+    ].join(' '),
+  ];
+}
+
+function gmailInvoiceSearchQueries({ newerThanDays = 365 } = {}) {
+  return [
+    ...gmailProviderAttachmentQueries({ newerThanDays }),
     gmailSmartInvoiceSearchQuery({ newerThanDays }),
     gmailUtilityBillsSearchQuery({ newerThanDays }),
   ];

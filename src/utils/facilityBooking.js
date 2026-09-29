@@ -1,6 +1,31 @@
 const { FacilityBooking } = require('../models');
 
-const ACTIVE_STATUSES = ['pending', 'confirmed'];
+const ACTIVE_STATUSES = ['awaiting_payment', 'pending', 'confirmed'];
+const BLOCKING_STATUSES = ['awaiting_payment', 'pending', 'confirmed'];
+const CALENDAR_PUBLIC_STATUSES = ['confirmed'];
+
+function getFacilityCapacity(facility) {
+  const cap = Number(facility?.capacity);
+  if (Number.isFinite(cap) && cap > 0) return Math.floor(cap);
+  return 1;
+}
+
+function resolveBookingStatusOnCreate(facility, totalPrice) {
+  if (totalPrice > 0) return 'awaiting_payment';
+  if (facility.requiresApproval) return 'pending';
+  return 'confirmed';
+}
+
+function bookingBlocksCalendarForOthers(status) {
+  return CALENDAR_PUBLIC_STATUSES.includes(status);
+}
+
+function shouldShowBookingOnCalendar(booking, { isOwn = false, staffView = false } = {}) {
+  if (booking.status === 'cancelled') return false;
+  if (staffView) return BLOCKING_STATUSES.includes(booking.status);
+  if (isOwn) return ACTIVE_STATUSES.includes(booking.status);
+  return bookingBlocksCalendarForOthers(booking.status);
+}
 
 function parseTimeToMinutes(timeStr) {
   const [hours, minutes] = (timeStr || '06:00').split(':').map(Number);
@@ -150,15 +175,32 @@ function resolveBookingWindow(facility, startAt, endAt, blockIndex) {
     throw new Error(`Las reservas deben ser en bloques de ${slotMinutes} minutos`);
   }
 
-  const advanceDays = rules.advanceBookingDays ?? 30;
-  const maxDate = new Date();
-  maxDate.setDate(maxDate.getDate() + advanceDays);
-  if (start > maxDate) {
-    throw new Error(`Solo puedes reservar hasta ${advanceDays} días adelante`);
-  }
-
   if (start < new Date()) {
     throw new Error('No puedes reservar en el pasado');
+  }
+
+  const minAdvanceDays = rules.minAdvanceBookingDays ?? 0;
+  if (minAdvanceDays > 0) {
+    const earliest = new Date();
+    earliest.setHours(0, 0, 0, 0);
+    earliest.setDate(earliest.getDate() + minAdvanceDays);
+    if (start < earliest) {
+      throw new Error(
+        minAdvanceDays === 1
+          ? 'Debes reservar con al menos 1 día de anticipación'
+          : `Debes reservar con al menos ${minAdvanceDays} días de anticipación`
+      );
+    }
+  }
+
+  const advanceDays = rules.advanceBookingDays ?? 30;
+  if (advanceDays > 0) {
+    const maxDate = new Date();
+    maxDate.setDate(maxDate.getDate() + advanceDays);
+    maxDate.setHours(23, 59, 59, 999);
+    if (start > maxDate) {
+      throw new Error(`Solo puedes reservar hasta ${advanceDays} días adelante`);
+    }
   }
 
   if (!isWithinSeason(facility, start, end)) {
@@ -181,7 +223,7 @@ function resolveBookingWindow(facility, startAt, endAt, blockIndex) {
 async function findOverlappingBookings(facilityId, startAt, endAt, excludeId) {
   const filter = {
     facilityId,
-    status: { $in: ACTIVE_STATUSES },
+    status: { $in: BLOCKING_STATUSES },
     startAt: { $lt: endAt },
     endAt: { $gt: startAt },
   };
@@ -189,10 +231,16 @@ async function findOverlappingBookings(facilityId, startAt, endAt, excludeId) {
   return FacilityBooking.find(filter);
 }
 
-async function assertBookingAvailable(facilityId, startAt, endAt, excludeId) {
+async function assertBookingAvailable(facility, startAt, endAt, excludeId) {
+  const facilityId = facility._id || facility;
   const overlaps = await findOverlappingBookings(facilityId, startAt, endAt, excludeId);
-  if (overlaps.length > 0) {
-    throw new Error('Ese horario ya está reservado');
+  const capacity = typeof facility === 'object' ? getFacilityCapacity(facility) : 1;
+  if (overlaps.length >= capacity) {
+    throw new Error(
+      capacity === 1
+        ? 'Ese horario ya está reservado'
+        : `Cupo completo (${capacity} personas en este horario)`
+    );
   }
 }
 
@@ -213,15 +261,25 @@ function formatBookingEvent(booking, { showResidentDetails = false } = {}) {
   const residentName = getResidentName(resident);
   const unitLabel = unit?.number ? `Apto ${unit.number}` : 'Unidad';
 
+  const statusLabels = {
+    awaiting_payment: 'Pago pendiente',
+    pending: 'Pendiente aprobación',
+    confirmed: 'Confirmada',
+    cancelled: 'Cancelada',
+  };
+
   return {
     id: booking._id,
     facilityId: booking.facilityId?._id || booking.facilityId,
     startAt: booking.startAt,
     endAt: booking.endAt,
     status: booking.status,
+    statusLabel: statusLabels[booking.status] || booking.status,
     totalPrice: booking.totalPrice,
     durationMinutes: booking.durationMinutes,
     notes: booking.notes,
+    paymentReference: booking.paymentReference,
+    paidAt: booking.paidAt,
     title: showResidentDetails ? `${residentName} · ${unitLabel}` : unitLabel,
     residentName: showResidentDetails ? residentName : undefined,
     unitNumber: unit?.number,
@@ -231,6 +289,11 @@ function formatBookingEvent(booking, { showResidentDetails = false } = {}) {
 
 module.exports = {
   ACTIVE_STATUSES,
+  BLOCKING_STATUSES,
+  CALENDAR_PUBLIC_STATUSES,
+  getFacilityCapacity,
+  resolveBookingStatusOnCreate,
+  shouldShowBookingOnCalendar,
   parseTimeOnDate,
   minutesBetween,
   snapToSlotMinutes,

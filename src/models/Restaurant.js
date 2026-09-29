@@ -1,5 +1,19 @@
 const mongoose = require('mongoose');
 
+const weeklyHoursSchema = new mongoose.Schema(
+  {
+    day: {
+      type: String,
+      enum: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+      required: true,
+    },
+    enabled: { type: Boolean, default: false },
+    start: { type: String, trim: true, default: '11:00' },
+    end: { type: String, trim: true, default: '22:00' },
+  },
+  { _id: false }
+);
+
 const imageSchema = new mongoose.Schema(
   {
     url: { type: String, required: true },
@@ -23,6 +37,7 @@ const restaurantSchema = new mongoose.Schema(
     phone: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true },
     openingHours: { type: String, trim: true },
+    weeklyHours: [weeklyHoursSchema],
     deliveryFee: { type: Number, min: 0, default: 0 },
     minOrderAmount: { type: Number, min: 0, default: 0 },
     currency: { type: String, default: 'COP' },

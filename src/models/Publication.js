@@ -13,6 +13,24 @@ const publicationSchema = new mongoose.Schema(
       ref: 'Building',
       index: true,
     },
+    audienceScope: {
+      type: String,
+      enum: ['building', 'towers', 'units'],
+      default: 'building',
+      index: true,
+    },
+    audienceTowerIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Tower',
+      },
+    ],
+    audienceUnitIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Unit',
+      },
+    ],
     title: { type: String, required: true, trim: true },
     body: { type: String },
     media: [

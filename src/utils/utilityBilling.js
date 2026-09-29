@@ -280,6 +280,14 @@ async function createUtilityBill(input, { notify = true } = {}) {
       read: false,
       meta: { billId: bill._id, serviceType: account.serviceType },
     });
+    const { sendPushToUsers } = require('./pushNotifications');
+    sendPushToUsers([account.userId], {
+      title: `Llegó tu factura de ${providerName}`,
+      body: dueLabel
+        ? `Valor: ${amountLabel}. Vence el ${dueLabel}.`
+        : `Valor: ${amountLabel}. Ábrela en Facturas.`,
+      url: '/app/servicios-publicos',
+    }).catch(() => {});
     bill.notifiedAt = new Date();
     await bill.save();
   }
@@ -381,7 +389,7 @@ function buildProviderLookupHint(account, { gmailConnected = false, googleEmail 
       accountCode: account.accountCode,
       accountCodeLabel: provider?.accountCodeLabel || 'NIC',
       message: gmailConnected
-        ? `Gmail ya está conectado${emailHint}. Usa “Buscar facturas ahora” en el Centro de Facturas (o Reintentar importación) para traer el recibo de Air-e. En air-e.com activa factura digital al mismo correo.`
+        ? `Gmail ya está conectado${emailHint}. Usa “Buscar facturas ahora” o “Búsqueda profunda” en el Centro de Facturas para traer el recibo de Air-e. En air-e.com activa factura digital al mismo correo.`
         : 'Además del portal, conecta Gmail en el Centro de Facturas para que Rentados lea el correo de Air-e (ZIP/XML/PDF) y te avise con el valor y la fecha de vencimiento.',
       canAutoFetch: gmailConnected,
       gmailConnected,
@@ -396,7 +404,7 @@ function buildProviderLookupHint(account, { gmailConnected = false, googleEmail 
       accountCode: account.accountCode,
       accountCodeLabel: provider?.accountCodeLabel || 'Código / contrato',
       message: gmailConnected
-        ? `Gmail ya está conectado${emailHint}. Las facturas de Gases del Caribe se importan desde ese correo: vuelve al inicio y pulsa “Reintentar importación”. En portal.gascaribe.com confirma que la factura digital llega al mismo Gmail.`
+        ? `Gmail ya está conectado${emailHint}. Las facturas de Gases del Caribe se importan desde ese correo: vuelve al inicio y pulsa “Búsqueda profunda”. En portal.gascaribe.com confirma que la factura digital llega al mismo Gmail.`
         : 'Conecta Gmail en el Centro de Facturas para detectar facturas de Gases del Caribe. Activa la factura digital en portal.gascaribe.com con el mismo correo.',
       canAutoFetch: gmailConnected,
       gmailConnected,

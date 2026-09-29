@@ -7,38 +7,60 @@ function getTenantIdsFromRequest(req) {
   };
 }
 
+async function listAccessibleBuildings(user) {
+  if (!user?.organizationId || user.role === 'SUPER_ADMIN') return [];
+  const filter = { organizationId: user.organizationId, isActive: { $ne: false } };
+  if (user.buildingId) filter._id = user.buildingId;
+  return Building.find(filter).sort({ createdAt: 1, name: 1 });
+}
+
+function pickBuilding(buildings, requestedId, locked) {
+  if (!buildings.length) return null;
+  if (locked) return buildings[0];
+  if (requestedId) {
+    const match = buildings.find((building) => building._id.toString() === String(requestedId));
+    if (match) return match;
+  }
+  return buildings[0];
+}
+
 async function getOrgContext(user, req = null) {
   if (user.role === 'SUPER_ADMIN') {
     const { organizationId, buildingId } = req ? getTenantIdsFromRequest(req) : {};
 
     if (!organizationId) {
-      return { organization: null, building: null };
+      return { organization: null, building: null, buildings: [], canSwitchBuildings: false, scope: 'platform' };
     }
 
     const organization = await Organization.findById(organizationId);
     if (!organization) {
-      return { organization: null, building: null };
+      return { organization: null, building: null, buildings: [], canSwitchBuildings: false, scope: 'platform' };
     }
 
-    let building = null;
-    if (buildingId) {
-      building = await Building.findOne({ _id: buildingId, organizationId: organization._id });
-    } else {
-      building = await Building.findOne({ organizationId: organization._id }).sort({ createdAt: 1 });
-    }
+    const buildings = await Building.find({ organizationId: organization._id, isActive: { $ne: false } }).sort({
+      createdAt: 1,
+      name: 1,
+    });
+    const building = pickBuilding(buildings, buildingId, false);
 
-    return { organization, building };
+    return { organization, building, buildings, canSwitchBuildings: false, scope: 'platform' };
   }
 
   const organization = user.organizationId
     ? await Organization.findById(user.organizationId)
     : null;
+  const buildings = organization ? await listAccessibleBuildings(user) : [];
+  const requestedId = req ? getTenantIdsFromRequest(req).buildingId : null;
+  const locked = Boolean(user.buildingId);
+  const building = pickBuilding(buildings, requestedId, locked);
 
-  const building = organization
-    ? await Building.findOne({ organizationId: organization._id }).sort({ createdAt: 1 })
-    : null;
-
-  return { organization, building };
+  return {
+    organization,
+    building,
+    buildings,
+    canSwitchBuildings: !locked && buildings.length > 1,
+    scope: locked ? 'building' : 'company',
+  };
 }
 
 function getScopedOrgFilter(user, req) {
@@ -64,5 +86,6 @@ module.exports = {
   getOrgContext,
   getTenantIdsFromRequest,
   getScopedOrgFilter,
+  listAccessibleBuildings,
   slugify,
 };

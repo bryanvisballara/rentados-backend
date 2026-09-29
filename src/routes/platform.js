@@ -6,10 +6,9 @@ const {
   User,
   Tower,
   Unit,
-  ServiceProvider,
   ServiceCategory,
-  Service,
-  ProviderInterview,
+  PlatformHomeService,
+  PlatformHomeServiceMember,
   PlatformPublication,
   ShopCategory,
   ShopProduct,
@@ -30,14 +29,35 @@ const {
 } = require('../utils/utilityBilling');
 const { getPlatformDashboardStats } = require('../utils/platformDashboard');
 const { uploadPublicationMedia } = require('../middleware/uploadPublication');
+const {
+  uploadPlatformHomeServiceImage,
+  uploadPlatformHomeServiceMemberMedia,
+} = require('../utils/publicationMedia');
+const {
+  formatPlatformService,
+  formatPlatformMember,
+  listPlatformHomeServicesForAdmin,
+  nextPlatformHomeServiceSortOrder,
+  resolveUniquePlatformServiceSlug,
+  reorderPlatformHomeServices,
+} = require('../utils/platformHomeServices');
 const { uploadShopImage } = require('../utils/shopMedia');
 const { uploadRestaurantImage } = require('../utils/restaurantMedia');
+const {
+  normalizeWeeklyHours,
+  syncOpeningHoursString,
+} = require('../utils/restaurantHours');
 const { getBuildingEngagementReport } = require('../utils/buildingEngagement');
 const {
   getUnitsAppAdoptionDetail,
   createUnitAppFollowUp,
 } = require('../utils/buildingAppAdoption');
 const { formatShopOrder, STATUS_LABELS } = require('../utils/shopOrder');
+const {
+  loadResidentAppSections,
+  saveResidentAppSections,
+  toCatalog,
+} = require('../utils/residentAppSections');
 const {
   formatRestaurantOrder,
   STATUS_LABELS: RESTAURANT_STATUS_LABELS,
@@ -46,6 +66,24 @@ const {
 const router = express.Router();
 
 router.use(authenticate, requireSuperAdmin);
+
+router.get('/resident-app', async (_req, res) => {
+  try {
+    const sections = await loadResidentAppSections();
+    res.json({ sections: toCatalog(sections) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/resident-app', async (req, res) => {
+  try {
+    const sections = await saveResidentAppSections(req.body?.sections);
+    res.json({ sections: toCatalog(sections) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.get('/dashboard', async (_req, res) => {
   try {
@@ -123,218 +161,243 @@ router.delete('/service-categories/:id', async (req, res) => {
   }
 });
 
-router.get('/provider-applications', async (req, res) => {
+// —— Servicios a domicilio Rentados ——
+router.get('/home-services', async (_req, res) => {
   try {
-    const filter = {};
-    if (req.query.status) filter.approvalStatus = req.query.status;
-
-    const applications = await ServiceProvider.find(filter)
-      .populate('userId', 'firstName lastName email phone isActive')
-      .populate('categoryIds', 'name slug')
-      .sort({ createdAt: -1 });
-
-    res.json({ applications });
+    const services = await listPlatformHomeServicesForAdmin();
+    res.json({ services });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/providers', async (_req, res) => {
+router.post('/home-services', async (req, res) => {
   try {
-    const providers = await ServiceProvider.find({ approvalStatus: 'approved' })
-      .populate('userId', 'firstName lastName email phone isActive')
-      .populate('categoryIds', 'name slug')
-      .sort({ businessName: 1 });
+    const { name, description, slug, sortOrder, isActive, imageUrl } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
 
-    res.json({ providers });
+    const resolvedSlug = await resolveUniquePlatformServiceSlug(slug?.trim() || name);
+    const order =
+      sortOrder != null && sortOrder !== ''
+        ? Number(sortOrder)
+        : await nextPlatformHomeServiceSortOrder();
+
+    const service = await PlatformHomeService.create({
+      slug: resolvedSlug,
+      name: String(name).trim(),
+      description: description?.trim() || '',
+      imageUrl: imageUrl?.trim() || '',
+      sortOrder: Number.isFinite(order) ? order : 0,
+      isActive: isActive !== false,
+    });
+
+    res.status(201).json({ service: formatPlatformService(service) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/home-services/reorder', async (req, res) => {
+  try {
+    const { orderedIds } = req.body;
+    const services = await reorderPlatformHomeServices(orderedIds);
+    res.json({ services });
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message });
+  }
+});
+
+router.get('/home-services/:id', async (req, res) => {
+  try {
+    const service = await PlatformHomeService.findById(req.params.id);
+    if (!service) return res.status(404).json({ error: 'Servicio no encontrado' });
+
+    const members = await PlatformHomeServiceMember.find({ serviceId: service._id }).sort({
+      sortOrder: 1,
+      name: 1,
+    });
+
+    res.json({
+      service: formatPlatformService(service),
+      members: members.map(formatPlatformMember),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.patch('/providers/:id', async (req, res) => {
+router.patch('/home-services/:id', async (req, res) => {
   try {
-    const allowed = [
-      'businessName',
-      'description',
-      'categoryIds',
-      'isActive',
-      'isVerified',
-      'approvalStatus',
-      'rejectionReason',
-    ];
-    const updates = Object.fromEntries(
-      Object.entries(req.body).filter(([key]) => allowed.includes(key))
-    );
+    const service = await PlatformHomeService.findById(req.params.id);
+    if (!service) return res.status(404).json({ error: 'Servicio no encontrado' });
 
-    if (updates.approvalStatus === 'approved') {
-      updates.isVerified = true;
-      updates.reviewedAt = new Date();
-      updates.reviewedBy = req.user._id;
-      updates.rejectionReason = undefined;
+    if (req.body.name != null) service.name = String(req.body.name).trim();
+    if (req.body.description != null) service.description = String(req.body.description).trim();
+    if (req.body.imageUrl != null) service.imageUrl = String(req.body.imageUrl).trim();
+    if (req.body.sortOrder != null) service.sortOrder = Number(req.body.sortOrder);
+    if (req.body.isActive !== undefined) service.isActive = Boolean(req.body.isActive);
+
+    await service.save();
+    res.json({ service: formatPlatformService(service) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/home-services/:id/upload-image', (req, res) => {
+  uploadPublicationMedia.single('file')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      res.status(400).json({ error: uploadErr.message });
+      return;
+    }
+    if (!req.file?.mimetype?.startsWith('image/')) {
+      res.status(400).json({ error: 'Selecciona una imagen válida.' });
+      return;
     }
 
-    if (updates.approvalStatus === 'rejected') {
-      updates.isVerified = false;
-      updates.reviewedAt = new Date();
-      updates.reviewedBy = req.user._id;
+    try {
+      const service = await PlatformHomeService.findById(req.params.id);
+      if (!service) {
+        res.status(404).json({ error: 'Servicio no encontrado' });
+        return;
+      }
+
+      const imageUrl = await uploadPlatformHomeServiceImage(
+        req.file.buffer,
+        req.file.mimetype,
+        service._id.toString()
+      );
+      service.imageUrl = imageUrl;
+      await service.save();
+      res.json({ service: formatPlatformService(service), imageUrl });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
     }
+  });
+});
 
-    const provider = await ServiceProvider.findByIdAndUpdate(req.params.id, updates, {
-      new: true,
-    })
-      .populate('userId', 'firstName lastName email phone')
-      .populate('categoryIds', 'name slug');
+router.post('/home-services/:serviceId/members', async (req, res) => {
+  try {
+    const service = await PlatformHomeService.findById(req.params.serviceId);
+    if (!service) return res.status(404).json({ error: 'Servicio no encontrado' });
 
-    if (!provider) return res.status(404).json({ error: 'Prestador no encontrado' });
-    res.json({ provider });
+    const { name, memberType, tagline, resume, sortOrder, isActive } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+
+    const member = await PlatformHomeServiceMember.create({
+      serviceId: service._id,
+      name: String(name).trim(),
+      memberType: memberType === 'company' ? 'company' : 'person',
+      tagline: tagline?.trim() || '',
+      resume: resume?.trim() || '',
+      sortOrder: Number(sortOrder) || 0,
+      isActive: isActive !== false,
+      media: [],
+    });
+
+    res.status(201).json({ member: formatPlatformMember(member) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.post('/providers/:id/approve', async (req, res) => {
+router.patch('/home-services/:serviceId/members/:memberId', async (req, res) => {
   try {
-    const provider = await ServiceProvider.findByIdAndUpdate(
-      req.params.id,
-      {
-        approvalStatus: 'approved',
-        isVerified: true,
-        isActive: true,
-        reviewedAt: new Date(),
-        reviewedBy: req.user._id,
-        rejectionReason: undefined,
-      },
-      { new: true }
-    )
-      .populate('userId', 'firstName lastName email phone')
-      .populate('categoryIds', 'name slug');
+    const member = await PlatformHomeServiceMember.findOne({
+      _id: req.params.memberId,
+      serviceId: req.params.serviceId,
+    });
+    if (!member) return res.status(404).json({ error: 'Perfil no encontrado' });
 
-    if (!provider) return res.status(404).json({ error: 'Prestador no encontrado' });
-    res.json({ provider });
+    if (req.body.name != null) member.name = String(req.body.name).trim();
+    if (req.body.memberType != null) {
+      member.memberType = req.body.memberType === 'company' ? 'company' : 'person';
+    }
+    if (req.body.tagline != null) member.tagline = String(req.body.tagline).trim();
+    if (req.body.resume != null) member.resume = String(req.body.resume).trim();
+    if (req.body.sortOrder != null) member.sortOrder = Number(req.body.sortOrder);
+    if (req.body.isActive !== undefined) member.isActive = Boolean(req.body.isActive);
+
+    await member.save();
+    res.json({ member: formatPlatformMember(member) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.post('/providers/:id/reject', async (req, res) => {
+router.delete('/home-services/:serviceId/members/:memberId', async (req, res) => {
   try {
-    const provider = await ServiceProvider.findByIdAndUpdate(
-      req.params.id,
-      {
-        approvalStatus: 'rejected',
-        isVerified: false,
-        isActive: false,
-        rejectionReason: req.body.reason || 'Solicitud no aprobada',
-        reviewedAt: new Date(),
-        reviewedBy: req.user._id,
-      },
-      { new: true }
-    )
-      .populate('userId', 'firstName lastName email phone')
-      .populate('categoryIds', 'name slug');
-
-    if (!provider) return res.status(404).json({ error: 'Prestador no encontrado' });
-    res.json({ provider });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-router.delete('/providers/:id', async (req, res) => {
-  try {
-    const provider = await ServiceProvider.findById(req.params.id);
-    if (!provider) return res.status(404).json({ error: 'Prestador no encontrado' });
-
-    await Service.updateMany({ providerId: provider._id }, { $set: { isActive: false } });
-    provider.isActive = false;
-    provider.approvalStatus = 'rejected';
-    await provider.save();
-
+    const member = await PlatformHomeServiceMember.findOneAndDelete({
+      _id: req.params.memberId,
+      serviceId: req.params.serviceId,
+    });
+    if (!member) return res.status(404).json({ error: 'Perfil no encontrado' });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.get('/interviews', async (req, res) => {
-  try {
-    const { from, to, status } = req.query;
-    const filter = {};
-
-    if (status && status !== 'all') {
-      filter.status = status;
+router.post('/home-services/:serviceId/members/:memberId/media', (req, res) => {
+  uploadPublicationMedia.single('file')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      res.status(400).json({ error: uploadErr.message });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: 'Selecciona un archivo.' });
+      return;
+    }
+    const isImage = req.file.mimetype.startsWith('image/');
+    const isVideo = req.file.mimetype.startsWith('video/');
+    if (!isImage && !isVideo) {
+      res.status(400).json({ error: 'Solo imágenes o videos.' });
+      return;
     }
 
-    if (from || to) {
-      filter.scheduledAt = {};
-      if (from) filter.scheduledAt.$gte = new Date(from);
-      if (to) filter.scheduledAt.$lte = new Date(to);
+    try {
+      const member = await PlatformHomeServiceMember.findOne({
+        _id: req.params.memberId,
+        serviceId: req.params.serviceId,
+      });
+      if (!member) {
+        res.status(404).json({ error: 'Perfil no encontrado' });
+        return;
+      }
+
+      const uploaded = await uploadPlatformHomeServiceMemberMedia(
+        req.file.buffer,
+        req.file.mimetype,
+        req.params.serviceId,
+        member._id.toString()
+      );
+
+      member.media.push({
+        type: uploaded.type,
+        url: uploaded.url,
+        cloudinaryPublicId: uploaded.cloudinaryPublicId,
+        thumbnailUrl: uploaded.thumbnailUrl,
+      });
+      await member.save();
+
+      res.status(201).json({ member: formatPlatformMember(member) });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
     }
-
-    const interviews = await ProviderInterview.find(filter)
-      .populate({
-        path: 'providerId',
-        select: 'businessName approvalStatus userId categoryIds',
-        populate: [
-          { path: 'userId', select: 'firstName lastName email phone' },
-          { path: 'categoryIds', select: 'name' },
-        ],
-      })
-      .sort({ scheduledAt: 1 });
-
-    res.json({ interviews });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  });
 });
 
-router.get('/providers/:id/interviews', async (req, res) => {
+router.delete('/home-services/:serviceId/members/:memberId/media/:mediaId', async (req, res) => {
   try {
-    const interviews = await ProviderInterview.find({ providerId: req.params.id }).sort({
-      scheduledAt: 1,
+    const member = await PlatformHomeServiceMember.findOne({
+      _id: req.params.memberId,
+      serviceId: req.params.serviceId,
     });
-    res.json({ interviews });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    if (!member) return res.status(404).json({ error: 'Perfil no encontrado' });
 
-router.post('/providers/:id/interviews', async (req, res) => {
-  try {
-    const provider = await ServiceProvider.findById(req.params.id);
-    if (!provider) return res.status(404).json({ error: 'Prestador no encontrado' });
-
-    const { scheduledAt, location, notes } = req.body;
-    if (!scheduledAt) return res.status(400).json({ error: 'Fecha y hora requeridas' });
-
-    const interview = await ProviderInterview.create({
-      providerId: provider._id,
-      scheduledAt: new Date(scheduledAt),
-      location,
-      notes,
-      createdBy: req.user._id,
-    });
-
-    res.status(201).json({ interview });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-router.patch('/interviews/:id', async (req, res) => {
-  try {
-    const allowed = ['scheduledAt', 'location', 'notes', 'status'];
-    const updates = Object.fromEntries(
-      Object.entries(req.body).filter(([key]) => allowed.includes(key))
-    );
-    if (updates.scheduledAt) updates.scheduledAt = new Date(updates.scheduledAt);
-
-    const interview = await ProviderInterview.findByIdAndUpdate(req.params.id, updates, {
-      new: true,
-    });
-    if (!interview) return res.status(404).json({ error: 'Cita no encontrada' });
-    res.json({ interview });
+    member.media = member.media.filter((m) => String(m._id) !== String(req.params.mediaId));
+    await member.save();
+    res.json({ member: formatPlatformMember(member) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -472,11 +535,16 @@ router.get('/overview', async (_req, res) => {
       return acc;
     }, {});
 
+    const buildingNameById = new Map(buildings.map((building) => [building._id.toString(), building.name]));
     const adminsByOrg = admins.reduce((acc, admin) => {
       const key = admin.organizationId?.toString();
       if (!key) return acc;
       if (!acc[key]) acc[key] = [];
-      acc[key].push(formatAuthUser(admin));
+      acc[key].push({
+        ...formatAuthUser(admin),
+        buildingName: admin.buildingId ? buildingNameById.get(admin.buildingId.toString()) || '' : '',
+        scope: admin.buildingId ? 'building' : 'company',
+      });
       return acc;
     }, {});
 
@@ -637,9 +705,16 @@ router.post('/organizations/:orgId/admins', async (req, res) => {
     const organization = await Organization.findById(req.params.orgId);
     if (!organization) return res.status(404).json({ error: 'Organización no encontrada' });
 
-    const { email, password, firstName, lastName, phone } = req.body;
+    const { email, password, firstName, lastName, phone, buildingId } = req.body;
     if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({ error: 'Nombre, correo y contraseña son requeridos' });
+    }
+
+    let assignedBuildingId = null;
+    if (buildingId) {
+      const building = await Building.findOne({ _id: buildingId, organizationId: organization._id });
+      if (!building) return res.status(400).json({ error: 'El conjunto no pertenece a esta empresa' });
+      assignedBuildingId = building._id;
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -651,10 +726,14 @@ router.post('/organizations/:orgId/admins', async (req, res) => {
       phone,
       role: 'ORG_ADMIN',
       organizationId: organization._id,
+      buildingId: assignedBuildingId,
     });
 
     res.status(201).json({ admin: formatAuthUser(user) });
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ error: 'Ese correo ya está registrado en esta empresa' });
+    }
     res.status(400).json({ error: err.message });
   }
 });
@@ -671,6 +750,22 @@ router.patch('/admins/:id', async (req, res) => {
 
     if (req.body.email) admin.email = req.body.email.toLowerCase().trim();
     if (req.body.password) admin.passwordHash = await bcrypt.hash(req.body.password, 10);
+
+    if (req.body.scope === 'company') {
+      admin.buildingId = null;
+    } else if (req.body.scope === 'building') {
+      if (!req.body.buildingId) {
+        return res.status(400).json({ error: 'Elige el conjunto de este administrador' });
+      }
+      const building = await Building.findOne({
+        _id: req.body.buildingId,
+        organizationId: admin.organizationId,
+      });
+      if (!building) {
+        return res.status(400).json({ error: 'El conjunto no pertenece a esta empresa' });
+      }
+      admin.buildingId = building._id;
+    }
 
     await admin.save();
     res.json({ admin: formatAuthUser(admin) });
@@ -933,15 +1028,16 @@ router.patch('/shop/orders/:id', async (req, res) => {
       return res.status(400).json({ error: 'Estado inválido' });
     }
 
-    const order = await ShopOrder.findByIdAndUpdate(
-      req.params.id,
-      {
-        status,
-        ...(statusNote !== undefined ? { statusNote: statusNote?.trim() || undefined } : {}),
-      },
-      { new: true }
-    );
+    const order = await ShopOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+    const previousStatus = order.status;
+    order.status = status;
+    if (statusNote !== undefined) order.statusNote = statusNote?.trim() || undefined;
+    await order.save();
+    if (previousStatus !== status) {
+      const { notifyOrderStatus } = require('../utils/pushNotifications');
+      notifyOrderStatus(order, 'shop').catch(() => {});
+    }
     res.json({ order: formatShopOrder(order) });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -983,15 +1079,16 @@ router.patch('/restaurants/orders/:id', async (req, res) => {
       return res.status(400).json({ error: 'Estado inválido' });
     }
 
-    const order = await RestaurantOrder.findByIdAndUpdate(
-      req.params.id,
-      {
-        status,
-        ...(statusNote !== undefined ? { statusNote: statusNote?.trim() || undefined } : {}),
-      },
-      { new: true }
-    );
+    const order = await RestaurantOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+    const previousStatus = order.status;
+    order.status = status;
+    if (statusNote !== undefined) order.statusNote = statusNote?.trim() || undefined;
+    await order.save();
+    if (previousStatus !== status) {
+      const { notifyOrderStatus } = require('../utils/pushNotifications');
+      notifyOrderStatus(order, 'restaurant').catch(() => {});
+    }
     res.json({ order: formatRestaurantOrder(order) });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -1042,6 +1139,7 @@ router.post('/restaurants', async (req, res) => {
       phone,
       email,
       openingHours,
+      weeklyHours,
       deliveryFee,
       minOrderAmount,
       currency,
@@ -1053,6 +1151,14 @@ router.post('/restaurants', async (req, res) => {
     } = req.body;
 
     if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    if (!coverImage?.url) {
+      return res.status(400).json({ error: 'La foto del restaurante es requerida' });
+    }
+
+    const normalizedWeekly = normalizeWeeklyHours(weeklyHours);
+    if (!normalizedWeekly.some((row) => row.enabled)) {
+      return res.status(400).json({ error: 'Selecciona al menos un día con horario' });
+    }
 
     const restaurant = await Restaurant.create({
       name: name.trim(),
@@ -1067,13 +1173,20 @@ router.post('/restaurants', async (req, res) => {
       address,
       phone,
       email,
-      openingHours,
+      weeklyHours: normalizedWeekly,
+      openingHours: syncOpeningHoursString(normalizedWeekly) || openingHours,
       deliveryFee: deliveryFee != null ? Number(deliveryFee) : 0,
       minOrderAmount: minOrderAmount != null ? Number(minOrderAmount) : 0,
       currency: currency === 'MXN' ? 'MXN' : 'COP',
       avgPrepMinutes: avgPrepMinutes != null ? Number(avgPrepMinutes) : undefined,
-      targetCountries: targetCountries || [],
-      targetCities: targetCities || [],
+      targetCountries: targetCountries?.length
+        ? targetCountries
+        : [country?.trim() || 'Colombia'],
+      targetCities: targetCities?.length
+        ? targetCities
+        : city?.trim()
+          ? [city.trim()]
+          : [],
       isFeatured: Boolean(isFeatured),
       sortOrder: sortOrder ?? 0,
       isActive: true,
@@ -1102,6 +1215,7 @@ router.patch('/restaurants/:id', async (req, res) => {
       'phone',
       'email',
       'openingHours',
+      'weeklyHours',
       'deliveryFee',
       'minOrderAmount',
       'currency',
@@ -1120,6 +1234,10 @@ router.patch('/restaurants/:id', async (req, res) => {
     if (updates.minOrderAmount != null) updates.minOrderAmount = Number(updates.minOrderAmount);
     if (updates.avgPrepMinutes != null) updates.avgPrepMinutes = Number(updates.avgPrepMinutes);
     if (updates.currency != null) updates.currency = updates.currency === 'MXN' ? 'MXN' : 'COP';
+    if (updates.weeklyHours != null) {
+      updates.weeklyHours = normalizeWeeklyHours(updates.weeklyHours);
+      updates.openingHours = syncOpeningHoursString(updates.weeklyHours);
+    }
 
     const restaurant = await Restaurant.findByIdAndUpdate(req.params.id, updates, { new: true });
     if (!restaurant) return res.status(404).json({ error: 'Restaurante no encontrado' });

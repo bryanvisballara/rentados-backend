@@ -1,5 +1,13 @@
 const { getColombiaDateStamp } = require('./dateTime');
 
+const SERVICE_FEE_RATE = 0.015;
+
+function restaurantServiceFee(subtotal) {
+  const base = Number(subtotal) || 0;
+  if (base <= 0) return 0;
+  return Math.round(base * SERVICE_FEE_RATE);
+}
+
 function buildRestaurantOrderNumber() {
   const stamp = getColombiaDateStamp();
   const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -35,6 +43,7 @@ function formatRestaurantOrder(order) {
     items: order.items,
     subtotal: order.subtotal,
     deliveryFee: order.deliveryFee,
+    serviceFee: order.serviceFee || 0,
     total: order.total,
     currency: order.currency,
     notes: order.notes,
@@ -47,4 +56,10 @@ function formatRestaurantOrder(order) {
   };
 }
 
-module.exports = { buildRestaurantOrderNumber, formatRestaurantOrder, STATUS_LABELS };
+module.exports = {
+  buildRestaurantOrderNumber,
+  formatRestaurantOrder,
+  STATUS_LABELS,
+  SERVICE_FEE_RATE,
+  restaurantServiceFee,
+};

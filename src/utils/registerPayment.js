@@ -156,6 +156,13 @@ async function registerPayment(input, context) {
     syncResult = await syncAutoSuspensions(organization, { userId });
   }
 
+  try {
+    const { syncPaidPayments } = require('./accounting');
+    await syncPaidPayments(affectedPayments);
+  } catch (err) {
+    console.error('No se pudo enviar el pago al software contable:', err.message);
+  }
+
   const payments = affectedPayments.map((p) => enrichPayment(p, billingSettings));
 
   return {

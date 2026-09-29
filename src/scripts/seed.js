@@ -110,6 +110,8 @@ async function runSeed() {
     role: 'SUPER_ADMIN',
   });
 
+  const { ensurePlatformHomeServices } = require('../utils/platformHomeServices');
+
   const org = await Organization.create({
     name: 'Administración Paraíso Caribe',
     slug: 'paraiso-caribe',
@@ -157,6 +159,8 @@ async function runSeed() {
     description: 'Conjunto residencial en Barranquilla',
     towers: DEMO_TOWER_DEFS.map((tower) => tower.name),
   });
+
+  await ensurePlatformHomeServices();
 
   const orgAdmin = await User.create({
     email: 'admin@paraisocaribe.com',
@@ -381,7 +385,7 @@ async function runSeed() {
       pricingType: 'monthly',
       blockWhenOverdue: true,
       requiresApproval: false,
-      openHours: { start: '05:30', end: '21:00' },
+      openHours: { start: '05:00', end: '21:00' },
       seasonOpenDate: new Date('2026-01-01'),
       seasonCloseDate: new Date('2026-12-31'),
       status: 'open',

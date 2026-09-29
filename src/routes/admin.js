@@ -13,8 +13,9 @@ const {
   VisitorParking,
   Organization,
   ServiceSuspension,
+  RentadosHomeService,
 } = require('../models');
-const { authenticate, requireAdmin, getOrganizationFilter } = require('../middleware/auth');
+const { authenticate, requireAdmin, getOrganizationFilter, formatAuthUser } = require('../middleware/auth');
 const { getBillingSettings, enrichPayment, parseAdministrationFee } = require('../utils/billing');
 const { getLockerSettings } = require('../utils/lockerSettings');
 const { getContactSettings, normalizeWhatsappNumber } = require('../utils/contactSettings');
@@ -30,7 +31,16 @@ function parseUnitCode(value) {
 }
 
 const { uploadPublicationMedia } = require('../middleware/uploadPublication');
-const { uploadPublicationFile, deletePublicationMedia } = require('../utils/publicationMedia');
+const {
+  uploadPublicationFile,
+  uploadBuildingHeroImage,
+  uploadRentadosHomeServiceImage,
+  deletePublicationMedia,
+} = require('../utils/publicationMedia');
+const {
+  listRentadosHomeServicesForAdmin,
+  formatRentadosHomeService,
+} = require('../utils/rentadosHomeServices');
 const mongoose = require('mongoose');
 const { normalizeOpenHours } = require('../utils/openHours');
 const {
@@ -40,21 +50,106 @@ const {
   getBookingPricing,
   ACTIVE_STATUSES,
 } = require('../utils/facilityBooking');
+const { resolvePublicationAudience } = require('../utils/publicationAudience');
 
 const router = express.Router();
 
 router.use(authenticate, requireAdmin);
 
+function formatBuildingChoice(building) {
+  return {
+    id: building._id,
+    name: building.name,
+    city: building.address?.city || '',
+    organizationId: building.organizationId,
+  };
+}
+
+function requireCompanyAdmin(user) {
+  if (user.role !== 'ORG_ADMIN' || user.buildingId) {
+    const error = new Error('Solo el acceso de la empresa puede ver todos los conjuntos');
+    error.status = 403;
+    throw error;
+  }
+}
+
 router.get('/context', async (req, res) => {
   try {
-    const { organization, building } = await getOrgContext(req.user, req);
+    const { organization, building, buildings, canSwitchBuildings, scope } = await getOrgContext(req.user, req);
     res.json({
       organization,
       building,
+      buildings: (buildings || []).map(formatBuildingChoice),
+      canSwitchBuildings: Boolean(canSwitchBuildings),
+      scope: scope || (req.user.buildingId ? 'building' : 'company'),
       needsTenantSelection: req.user.role === 'SUPER_ADMIN' && !organization,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/building-admins', async (req, res) => {
+  try {
+    requireCompanyAdmin(req.user);
+    const [admins, buildings] = await Promise.all([
+      User.find({ organizationId: req.user.organizationId, role: 'ORG_ADMIN' })
+        .select('-passwordHash')
+        .sort({ firstName: 1, lastName: 1 }),
+      Building.find({ organizationId: req.user.organizationId }).select('name'),
+    ]);
+    const names = new Map(buildings.map((item) => [item._id.toString(), item.name]));
+    res.json({
+      admins: admins.map((admin) => ({
+        ...formatAuthUser(admin),
+        buildingName: admin.buildingId ? names.get(admin.buildingId.toString()) || '' : '',
+        scope: admin.buildingId ? 'building' : 'company',
+      })),
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.post('/building-admins', async (req, res) => {
+  try {
+    requireCompanyAdmin(req.user);
+    const { email, password, firstName, lastName, phone, buildingId } = req.body;
+    if (!email || !password || !firstName || !lastName || !buildingId) {
+      return res.status(400).json({ error: 'Nombre, correo, contraseña y conjunto son requeridos' });
+    }
+
+    const building = await Building.findOne({
+      _id: buildingId,
+      organizationId: req.user.organizationId,
+      isActive: { $ne: false },
+    });
+    if (!building) return res.status(400).json({ error: 'Ese conjunto no pertenece a tu empresa' });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      email: String(email).toLowerCase().trim(),
+      passwordHash,
+      firstName: String(firstName).trim(),
+      lastName: String(lastName).trim(),
+      phone,
+      role: 'ORG_ADMIN',
+      organizationId: req.user.organizationId,
+      buildingId: building._id,
+    });
+
+    res.status(201).json({
+      admin: {
+        ...formatAuthUser(user),
+        buildingName: building.name,
+        scope: 'building',
+      },
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ error: 'Ese correo ya está registrado en esta empresa' });
+    }
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
@@ -72,6 +167,19 @@ router.patch('/building', async (req, res) => {
       updates.platformCommissionPercent = value;
     }
 
+    if (req.body.heroImageUrl !== undefined) {
+      const raw = req.body.heroImageUrl;
+      if (raw === null || raw === '') {
+        updates.heroImageUrl = null;
+      } else {
+        const value = String(raw).trim();
+        if (!/^https?:\/\//i.test(value)) {
+          return res.status(400).json({ error: 'La URL de la imagen debe comenzar con http:// o https://' });
+        }
+        updates.heroImageUrl = value;
+      }
+    }
+
     if (!Object.keys(updates).length) {
       return res.status(400).json({ error: 'No hay cambios para guardar' });
     }
@@ -83,6 +191,54 @@ router.patch('/building', async (req, res) => {
   }
 });
 
+router.post('/building/upload-hero', (req, res) => {
+  uploadPublicationMedia.single('file')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message =
+        uploadErr.code === 'LIMIT_FILE_SIZE'
+          ? 'El archivo supera el límite de 50 MB.'
+          : uploadErr.message;
+      res.status(400).json({ error: message });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ error: 'Selecciona una imagen.' });
+      return;
+    }
+
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ error: 'Solo se permiten imágenes (JPG, PNG, WebP, GIF).' });
+      return;
+    }
+
+    try {
+      const { building, organization } = await getOrgContext(req.user, req);
+      if (!building) {
+        res.status(400).json({ error: 'No hay conjunto configurado' });
+        return;
+      }
+
+      const heroImageUrl = await uploadBuildingHeroImage(
+        req.file.buffer,
+        req.file.mimetype,
+        organization?._id?.toString() || building.organizationId?.toString(),
+        building._id.toString()
+      );
+
+      const updated = await Building.findByIdAndUpdate(
+        building._id,
+        { heroImageUrl },
+        { new: true }
+      );
+
+      res.status(201).json({ building: updated, heroImageUrl });
+    } catch (err) {
+      res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+});
+
 router.get('/dashboard', async (req, res) => {
   try {
     const orgFilter = getOrganizationFilter(req.user);
@@ -90,6 +246,8 @@ router.get('/dashboard', async (req, res) => {
     if (!building) return res.json({ stats: {}, finance: {} });
 
     const buildingFilter = { buildingId: building._id, ...orgFilter };
+    const unitIds = await Unit.find(buildingFilter).distinct('_id');
+    const unitFilter = { unitId: { $in: unitIds } };
     const now = new Date();
     const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
@@ -107,12 +265,12 @@ router.get('/dashboard', async (req, res) => {
       Tower.countDocuments(buildingFilter),
       Unit.countDocuments(buildingFilter),
       Facility.countDocuments(buildingFilter),
-      Resident.countDocuments(orgFilter),
-      Payment.countDocuments({ ...orgFilter, status: 'paid' }),
-      Payment.countDocuments({ ...orgFilter, status: 'overdue' }),
+      Resident.countDocuments({ ...orgFilter, ...unitFilter }),
+      Payment.countDocuments({ ...orgFilter, ...unitFilter, status: 'paid' }),
+      Payment.countDocuments({ ...orgFilter, ...unitFilter, status: 'overdue' }),
       VisitorParking.countDocuments(buildingFilter),
-      Payment.find(orgFilter),
-      Payment.find({ ...orgFilter, period: currentPeriod }),
+      Payment.find({ ...orgFilter, ...unitFilter }),
+      Payment.find({ ...orgFilter, ...unitFilter, period: currentPeriod }),
     ]);
 
     const sum = (items, pick) => items.reduce((acc, p) => acc + pick(p), 0);
@@ -617,6 +775,77 @@ router.get('/units/:id/residents', async (req, res) => {
   }
 });
 
+// —— Servicios a domicilio (Rentados) ——
+router.get('/home-services', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user, req);
+    if (!organization) return res.json({ services: [] });
+    const services = await listRentadosHomeServicesForAdmin(organization._id);
+    res.json({ services });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/home-services/:id', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user, req);
+    const service = await RentadosHomeService.findOne({
+      _id: req.params.id,
+      organizationId: organization._id,
+    });
+    if (!service) return res.status(404).json({ error: 'Servicio no encontrado' });
+
+    if (req.body.name != null) service.name = String(req.body.name).trim();
+    if (req.body.description != null) service.description = String(req.body.description).trim();
+    if (req.body.imageUrl != null) service.imageUrl = String(req.body.imageUrl).trim();
+    if (req.body.sortOrder != null) service.sortOrder = Number(req.body.sortOrder);
+    if (req.body.isActive !== undefined) service.isActive = Boolean(req.body.isActive);
+
+    await service.save();
+    res.json({ service: formatRentadosHomeService(service) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/home-services/:id/upload-image', (req, res) => {
+  uploadPublicationMedia.single('file')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      res.status(400).json({ error: uploadErr.message });
+      return;
+    }
+    if (!req.file || !req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ error: 'Selecciona una imagen válida.' });
+      return;
+    }
+
+    try {
+      const { organization } = await getOrgContext(req.user, req);
+      const service = await RentadosHomeService.findOne({
+        _id: req.params.id,
+        organizationId: organization._id,
+      });
+      if (!service) {
+        res.status(404).json({ error: 'Servicio no encontrado' });
+        return;
+      }
+
+      const imageUrl = await uploadRentadosHomeServiceImage(
+        req.file.buffer,
+        req.file.mimetype,
+        organization._id.toString(),
+        service._id.toString()
+      );
+      service.imageUrl = imageUrl;
+      await service.save();
+      res.json({ service: formatRentadosHomeService(service), imageUrl });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+});
+
 // —— Servicios / áreas comunes ——
 function formatFacility(facility) {
   const doc = facility?.toObject ? facility.toObject() : facility;
@@ -827,7 +1056,7 @@ router.post('/facility-bookings', async (req, res) => {
       endAt,
       blockIndex
     );
-    await assertBookingAvailable(facility._id, start, end);
+    await assertBookingAvailable(facility, start, end);
 
     const booking = await FacilityBooking.create({
       organizationId: building.organizationId,
@@ -844,8 +1073,14 @@ router.post('/facility-bookings', async (req, res) => {
       pricingMode: priceInfo.pricingMode,
       pricingLabel: priceInfo.blockLabel,
       notes,
-      status: facility.requiresApproval ? 'pending' : 'confirmed',
+      status: priceInfo.totalPrice > 0 ? 'awaiting_payment' : facility.requiresApproval ? 'pending' : 'confirmed',
     });
+
+    if (booking.status === 'awaiting_payment') {
+      booking.status = 'confirmed';
+      booking.paidAt = new Date();
+      await booking.save();
+    }
 
     await booking.populate([
       { path: 'residentId', populate: { path: 'userId', select: 'firstName lastName' } },
@@ -946,7 +1181,10 @@ router.post('/facilities/:id/reopen', async (req, res) => {
 router.get('/publications', async (req, res) => {
   try {
     const orgFilter = getOrganizationFilter(req.user);
-    const publications = await Publication.find(orgFilter).sort({ publishedAt: -1 }).limit(50);
+    const { building } = await getOrgContext(req.user, req);
+    const filter = { ...orgFilter };
+    if (building) filter.buildingId = building._id;
+    const publications = await Publication.find(filter).sort({ publishedAt: -1 }).limit(50);
     res.json({ publications });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -986,9 +1224,13 @@ router.post('/publications/upload-media', (req, res) => {
 router.post('/publications', async (req, res) => {
   try {
     const { building } = await getOrgContext(req.user, req);
+    const audience = await resolvePublicationAudience(req.body, building);
     const publication = await Publication.create({
       organizationId: building?.organizationId || req.user.organizationId,
       buildingId: building?._id,
+      audienceScope: audience.audienceScope,
+      audienceTowerIds: audience.audienceTowerIds,
+      audienceUnitIds: audience.audienceUnitIds,
       title: req.body.title,
       body: req.body.body,
       media: req.body.media || [],
@@ -998,9 +1240,12 @@ router.post('/publications', async (req, res) => {
       createdBy: req.user._id,
     });
 
+    const { notifyNewPublication } = require('../utils/pushNotifications');
+    notifyNewPublication(publication).catch(() => {});
+
     res.status(201).json({ publication });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
@@ -1423,7 +1668,14 @@ router.get('/cartera', async (req, res) => {
   try {
     const orgFilter = getOrganizationFilter(req.user);
     const { view, period: periodQuery, from, to } = req.query;
-    const { organization } = await getOrgContext(req.user, req);
+    const { organization, building } = await getOrgContext(req.user, req);
+    if (building) {
+      const unitIds = await Unit.find({
+        buildingId: building._id,
+        organizationId: organization?._id || building.organizationId,
+      }).distinct('_id');
+      orgFilter.unitId = { $in: unitIds };
+    }
     const billingSettings = getBillingSettings(organization);
 
     const now = new Date();
@@ -1584,14 +1836,18 @@ router.get('/cartera', async (req, res) => {
 router.get('/residents', async (req, res) => {
   try {
     const orgFilter = getOrganizationFilter(req.user);
+    const { building } = await getOrgContext(req.user, req);
     const filter = { ...orgFilter };
 
     const residents = await Resident.find(filter)
       .populate('userId', 'firstName lastName email phone')
-      .populate('unitId', 'number type tower adminStatus towerId code')
+      .populate('unitId', 'number type tower adminStatus towerId code buildingId')
       .sort({ createdAt: -1 });
 
     let result = residents;
+    if (building) {
+      result = result.filter((resident) => resident.unitId?.buildingId?.toString() === building._id.toString());
+    }
 
     if (req.query.status) {
       result = result.filter((r) => r.unitId?.adminStatus === req.query.status);
@@ -1628,11 +1884,14 @@ router.get('/residents/:id', async (req, res) => {
   try {
     const resident = await Resident.findById(req.params.id)
       .populate('userId', 'firstName lastName email phone')
-      .populate('unitId', 'number type tower adminStatus areaSqm');
+      .populate('unitId', 'number type tower adminStatus areaSqm buildingId');
 
     if (!resident) return res.status(404).json({ error: 'Residente no encontrado' });
 
-    const { organization } = await getOrgContext(req.user, req);
+    const { organization, building } = await getOrgContext(req.user, req);
+    if (building && resident.unitId?.buildingId?.toString() !== building._id.toString()) {
+      return res.status(404).json({ error: 'Residente no encontrado' });
+    }
     const billingSettings = getBillingSettings(organization);
 
     const payments = await Payment.find({ unitId: resident.unitId })
@@ -1745,5 +2004,7 @@ router.delete('/residents/:id', async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+
+router.use('/accounting', require('./accountingAdmin'));
 
 module.exports = router;

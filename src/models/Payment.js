@@ -30,6 +30,11 @@ const paymentSchema = new mongoose.Schema(
       ref: 'Facility',
       index: true,
     },
+    facilityBookingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FacilityBooking',
+      index: true,
+    },
     conceptLabel: { type: String, trim: true },
     period: { type: String, required: true, trim: true },
     amount: { type: Number, required: true, min: 0 },
@@ -45,6 +50,8 @@ const paymentSchema = new mongoose.Schema(
       index: true,
     },
     notes: { type: String },
+    accountingInvoiceId: { type: String, trim: true },
+    accountingPaymentId: { type: String, trim: true },
   },
   { timestamps: true }
 );

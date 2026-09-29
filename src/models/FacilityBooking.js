@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const BOOKING_STATUSES = ['pending', 'confirmed', 'cancelled'];
+const BOOKING_STATUSES = ['awaiting_payment', 'pending', 'confirmed', 'cancelled'];
 
 const facilityBookingSchema = new mongoose.Schema(
   {
@@ -50,6 +50,12 @@ const facilityBookingSchema = new mongoose.Schema(
     pricingMode: { type: String },
     pricingLabel: { type: String },
     notes: { type: String },
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Payment',
+    },
+    paymentReference: { type: String, trim: true, index: true },
+    paidAt: { type: Date },
     cancelledAt: { type: Date },
     cancelReason: { type: String },
   },

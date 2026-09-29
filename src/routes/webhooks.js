@@ -1,6 +1,8 @@
 const express = require('express');
 const { UtilityProvider, UtilityBill, UtilityPayment } = require('../models');
 const { handleGmailPubSubPush } = require('../utils/gmailUtilitySync');
+const { confirmFacilityBookingPayment } = require('../utils/facilityBookingPayment');
+const { confirmCardPayment } = require('../utils/cardPayments');
 
 const router = express.Router();
 
@@ -76,6 +78,37 @@ router.post('/utilities/:slug', async (req, res) => {
 });
 
 /**
+ * Confirmación de pago de reserva de servicio (pasarela / Wompi / manual integrado).
+ * POST /api/v1/webhooks/facility-bookings/payment
+ * Header opcional: x-webhook-secret (FACILITY_BOOKING_WEBHOOK_SECRET)
+ */
+router.post('/facility-bookings/payment', async (req, res) => {
+  try {
+    const secret = process.env.FACILITY_BOOKING_WEBHOOK_SECRET;
+    if (secret && req.headers['x-webhook-secret'] !== secret) {
+      return res.status(401).json({ error: 'Webhook no autorizado' });
+    }
+
+    const { bookingId, paymentReference, reference, amount, externalRef } = req.body;
+    const result = await confirmFacilityBookingPayment({
+      bookingId,
+      paymentReference: paymentReference || reference,
+      amount,
+      externalRef,
+    });
+
+    res.json({
+      ok: true,
+      bookingId: result.booking._id,
+      status: result.booking.status,
+      alreadyConfirmed: result.alreadyConfirmed,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
  * Push de Gmail via Google Cloud Pub/Sub.
  * Configura el topic en GMAIL_PUBSUB_TOPIC y una suscripción push a:
  * POST /api/v1/webhooks/gmail/pubsub
@@ -90,6 +123,38 @@ router.post('/gmail/pubsub', async (req, res) => {
   } catch (err) {
     console.error('Gmail Pub/Sub webhook error:', err.message);
     res.status(204).send();
+  }
+});
+
+/**
+ * Confirmación de cobro con tarjeta tokenizada (restaurante o administración).
+ * POST /api/v1/webhooks/card-payments
+ * Header opcional: x-webhook-secret (CARD_PAYMENT_WEBHOOK_SECRET)
+ * Body: { paymentId, amount, externalRef, status: "approved" | "rejected" }
+ */
+router.post('/card-payments', async (req, res) => {
+  try {
+    const secret = process.env.CARD_PAYMENT_WEBHOOK_SECRET;
+    if (secret && req.headers['x-webhook-secret'] !== secret) {
+      return res.status(401).json({ error: 'Webhook no autorizado' });
+    }
+
+    const approved = String(req.body.status || 'approved').toLowerCase() !== 'rejected';
+    const result = await confirmCardPayment({
+      paymentId: req.body.paymentId || req.body.reference,
+      amount: req.body.amount,
+      externalRef: req.body.externalRef || req.body.transactionId,
+      approved,
+    });
+
+    res.json({
+      ok: true,
+      status: result.payment.status,
+      alreadyConfirmed: result.alreadyConfirmed,
+      orderNumber: result.payment.order?.orderNumber,
+    });
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 

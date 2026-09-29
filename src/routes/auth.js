@@ -1,8 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { User, ServiceProvider, ServiceCategory, Building, Resident } = require('../models');
+const { User, ServiceProvider, ServiceCategory, Building, Resident, Organization } = require('../models');
 const { signToken, authenticate, formatAuthUser } = require('../middleware/auth');
+const { deleteResidentAccount } = require('../utils/deleteResidentAccount');
 const { createUserSession } = require('../utils/userSession');
+const { listAccessibleBuildings } = require('../utils/tenantContext');
 const { formatServiceCategory, resolveActiveCategoryIds } = require('../utils/serviceCategory');
 
 const router = express.Router();
@@ -83,7 +85,15 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
     }
 
-    const loginId = String(email).toLowerCase().trim();
+    const loginId = String(email)
+      .normalize('NFKC')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .toLowerCase()
+      .trim();
+    const loginPassword = String(password)
+      .normalize('NFKC')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .trim();
     let user;
     let building = null;
 
@@ -110,7 +120,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
+    const valid = await bcrypt.compare(loginPassword, user.passwordHash);
     if (!valid) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
@@ -151,10 +161,28 @@ router.post('/login', async (req, res) => {
     const { token, jti } = signToken(user);
     await createUserSession(user, req, jti, portal);
 
+    let accessBuildings;
+    let activeBuilding = building;
+    let organizationName = '';
+    let canSwitchBuildings = false;
+
+    if (portal === 'admin' && user.role === 'ORG_ADMIN' && user.organizationId) {
+      accessBuildings = await listAccessibleBuildings(user);
+      const organization = await Organization.findById(user.organizationId).select('name');
+      organizationName = organization?.name || '';
+      activeBuilding = user.buildingId
+        ? accessBuildings.find((item) => item._id.toString() === user.buildingId.toString()) || accessBuildings[0]
+        : accessBuildings[0];
+      canSwitchBuildings = !user.buildingId && accessBuildings.length > 1;
+    }
+
     res.json({
       token,
       user: formatAuthUser(user),
-      building: building ? formatLoginBuilding(building) : undefined,
+      organizationName: organizationName || undefined,
+      building: activeBuilding ? formatLoginBuilding(activeBuilding) : undefined,
+      buildings: accessBuildings ? accessBuildings.map(formatLoginBuilding) : undefined,
+      canSwitchBuildings: accessBuildings ? canSwitchBuildings : undefined,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -174,61 +202,18 @@ router.get('/me', authenticate, async (req, res) => {
   });
 });
 
-router.post('/register-provider', async (req, res) => {
+router.post('/register-provider', (_req, res) => {
+  res.status(410).json({
+    error: 'El registro de prestadores independientes ya no está disponible. Los servicios los opera Rentados.',
+  });
+});
+
+router.delete('/account', authenticate, async (req, res) => {
   try {
-    const {
-      email,
-      password,
-      firstName,
-      lastName,
-      phone,
-      businessName,
-      description,
-      categoryIds = [],
-    } = req.body;
-
-    if (!email || !password || !firstName || !lastName || !businessName) {
-      return res.status(400).json({
-        error: 'Correo, contraseña, nombre y nombre del negocio son requeridos',
-      });
-    }
-
-    const existing = await User.findOne({ email: email.toLowerCase().trim() });
-    if (existing) return res.status(400).json({ error: 'El correo ya está registrado' });
-
-    const resolvedCategoryIds = await resolveActiveCategoryIds(ServiceCategory, categoryIds);
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.create({
-      email: email.toLowerCase().trim(),
-      passwordHash,
-      firstName,
-      lastName,
-      phone,
-      role: 'PROVIDER',
-    });
-
-    const provider = await ServiceProvider.create({
-      userId: user._id,
-      businessName,
-      description,
-      categoryIds: resolvedCategoryIds,
-      approvalStatus: 'pending',
-      isVerified: false,
-      isActive: true,
-    });
-
-    const { token, jti } = signToken(user);
-    await createUserSession(user, req, jti, 'provider');
-
-    res.status(201).json({
-      token,
-      user: formatAuthUser(user),
-      provider,
-      message: 'Solicitud enviada. Te contactaremos para la entrevista.',
-    });
+    await deleteResidentAccount(req.user._id);
+    res.json({ ok: true });
   } catch (err) {
-    res.status(err.status || 400).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

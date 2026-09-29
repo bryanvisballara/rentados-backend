@@ -1,5 +1,14 @@
 const express = require('express');
-const { Resident, LockerPackage, Unit, Building } = require('../models');
+const mongoose = require('mongoose');
+const { Resident, LockerPackage, Unit, Building, Facility, FacilityBooking } = require('../models');
+const { normalizeOpenHours } = require('../utils/openHours');
+const {
+  ACTIVE_STATUSES,
+  formatBookingEvent,
+  getBookingPricing,
+  getFacilityCapacity,
+  shouldShowBookingOnCalendar,
+} = require('../utils/facilityBooking');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { getOrgContext } = require('../utils/tenantContext');
 const { getLockerSettings } = require('../utils/lockerSettings');
@@ -386,6 +395,73 @@ router.post('/parking/exit', async (req, res) => {
     res.json({ visit });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/facilities', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    if (!building) return res.json({ facilities: [] });
+
+    const facilities = await Facility.find({
+      buildingId: building._id,
+      bookable: true,
+      isActive: true,
+    }).sort({ name: 1 });
+
+    res.json({
+      facilities: facilities.map((f) => ({
+        id: f._id,
+        name: f.name,
+        openHours: f.open24Hours ? { start: '00:00', end: '00:00' } : normalizeOpenHours(f.openHours),
+        open24Hours: Boolean(f.open24Hours),
+        bookingRules: f.bookingRules,
+        capacity: getFacilityCapacity(f),
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/facility-bookings', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    if (!building) return res.json({ bookings: [], facilities: [] });
+
+    const { from, to, facilityId } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ error: 'Indica from y to (ISO date)' });
+    }
+
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    const filter = {
+      buildingId: building._id,
+      status: { $in: ACTIVE_STATUSES },
+      startAt: { $lt: toDate },
+      endAt: { $gt: fromDate },
+    };
+    if (facilityId && mongoose.Types.ObjectId.isValid(facilityId)) {
+      filter.facilityId = facilityId;
+    }
+
+    const bookings = await FacilityBooking.find(filter)
+      .populate({ path: 'residentId', populate: { path: 'userId', select: 'firstName lastName' } })
+      .populate('unitId', 'number type tower')
+      .populate('facilityId', 'name slug openHours open24Hours bookingRules capacity')
+      .sort({ startAt: 1 });
+
+    res.json({
+      bookings: bookings
+        .filter((b) => shouldShowBookingOnCalendar(b, { staffView: true }))
+        .map((b) => ({
+          ...formatBookingEvent(b, { showResidentDetails: true }),
+          facilityName: b.facilityId?.name,
+        })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

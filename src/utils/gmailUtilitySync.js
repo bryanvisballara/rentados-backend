@@ -465,11 +465,13 @@ async function processGmailMessage({
 
   if (!zipOrXmlOrPdf?.body?.attachmentId) {
     summary.skipped += 1;
-    summary.errors.push({
-      messageId,
-      reason: `Sin PDF/ZIP adjunto (${subject || from || messageId})`,
-    });
-    // Sin adjunto no tiene sentido reintentar cada vez
+    if ((summary.errors || []).length < 12) {
+      summary.errors.push({
+        messageId,
+        reason: `Sin PDF/ZIP adjunto (${subject || from || messageId})`,
+        subject,
+      });
+    }
     processed.add(messageId);
     return;
   }
@@ -518,23 +520,41 @@ async function processGmailMessage({
   }
 }
 
-async function listGmailMessageIds(gmail, { maxMessages = 50 } = {}) {
+async function listGmailMessageIds(
+  gmail,
+  { maxMessages = 300, newerThanDays = 365 } = {}
+) {
   const byId = new Map();
-  const queries = gmailInvoiceSearchQueries({ newerThanDays: 180 });
+  const queries = gmailInvoiceSearchQueries({ newerThanDays });
+  const pageSize = Math.min(100, maxMessages);
+
   for (const q of queries) {
-    const list = await gmail.users.messages.list({
-      userId: 'me',
-      q,
-      maxResults: maxMessages,
-    });
-    for (const item of list.data.messages || []) {
-      if (item?.id) byId.set(item.id, item);
-    }
+    let pageToken;
+    do {
+      const list = await gmail.users.messages.list({
+        userId: 'me',
+        q,
+        maxResults: pageSize,
+        pageToken,
+      });
+      for (const item of list.data.messages || []) {
+        if (item?.id) byId.set(item.id, item);
+      }
+      pageToken = list.data.nextPageToken || undefined;
+      // Por consulta paginamos hasta cubrir el cupo global
+    } while (pageToken && byId.size < maxMessages);
   }
+
   return Array.from(byId.values()).slice(0, maxMessages);
 }
 
-async function syncAirEBillsFromGmail({ user, resident, maxMessages = 50, force = false } = {}) {
+async function syncAirEBillsFromGmail({
+  user,
+  resident,
+  maxMessages,
+  force = false,
+  newerThanDays,
+} = {}) {
   const connection = await GmailConnection.findOne({ userId: user._id, isActive: true });
   if (!connection) {
     throw new Error('Conecta Gmail primero para el Centro Inteligente de Facturas');
@@ -552,8 +572,15 @@ async function syncAirEBillsFromGmail({ user, resident, maxMessages = 50, force 
     connection.lastSyncError = `Watch Pub/Sub: ${err.message}`;
   }
 
+  // Búsqueda profunda: reintento fuerza hasta 400 correos / 18 meses
+  const limit = Number(maxMessages) > 0 ? Number(maxMessages) : force ? 400 : 250;
+  const days = Number(newerThanDays) > 0 ? Number(newerThanDays) : force ? 540 : 365;
+
   const linkedAccounts = await loadLinkedAccounts(resident, user);
-  const messages = await listGmailMessageIds(gmail, { maxMessages });
+  const messages = await listGmailMessageIds(gmail, {
+    maxMessages: limit,
+    newerThanDays: days,
+  });
 
   const summary = {
     scanned: messages.length,
@@ -564,6 +591,8 @@ async function syncAirEBillsFromGmail({ user, resident, maxMessages = 50, force 
     aiEnabled: isAiInvoiceConfigured(),
     force: Boolean(force),
     linkedAccounts: linkedAccounts.length,
+    searchDays: days,
+    maxMessages: limit,
   };
 
   const processed = force ? new Set() : new Set(connection.processedMessageIds || []);
@@ -582,7 +611,9 @@ async function syncAirEBillsFromGmail({ user, resident, maxMessages = 50, force 
       });
     } catch (err) {
       summary.skipped += 1;
-      summary.errors.push({ messageId: item.id, reason: err.message });
+      if (summary.errors.length < 12) {
+        summary.errors.push({ messageId: item.id, reason: err.message });
+      }
     }
   }
 
@@ -590,7 +621,7 @@ async function syncAirEBillsFromGmail({ user, resident, maxMessages = 50, force 
   connection.historyId = profile.data.historyId
     ? String(profile.data.historyId)
     : connection.historyId;
-  connection.processedMessageIds = Array.from(processed).slice(-400);
+  connection.processedMessageIds = Array.from(processed).slice(-800);
   connection.lastSyncAt = new Date();
   connection.lastSyncStatus = summary.errors.length && summary.created === 0 ? 'partial' : 'ok';
   connection.lastSyncSummary = {
@@ -600,6 +631,8 @@ async function syncAirEBillsFromGmail({ user, resident, maxMessages = 50, force 
     errors: summary.errors.slice(0, 8),
     imported: summary.imported,
     force: summary.force,
+    searchDays: summary.searchDays,
+    maxMessages: summary.maxMessages,
   };
   if (!connection.lastSyncError?.startsWith('Watch Pub/Sub') || summary.created > 0) {
     connection.lastSyncError = summary.errors[0]?.reason || null;
