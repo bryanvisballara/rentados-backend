@@ -34,6 +34,55 @@ async function createPendingBookingPayment({ booking, facility, resident, organi
   return payment;
 }
 
+async function voidPendingBookingPayment(booking, reason = 'Reserva cancelada') {
+  if (!booking?._id) return { voided: 0 };
+
+  const query = {
+    status: { $in: ['pending', 'overdue', 'partial'] },
+    $or: [{ facilityBookingId: booking._id }],
+  };
+  if (booking.paymentId) {
+    query.$or.push({ _id: booking.paymentId });
+  }
+
+  const payments = await Payment.find(query);
+  const suffix = reason.trim();
+  for (const payment of payments) {
+    payment.status = 'cancelled';
+    if (suffix) {
+      payment.notes = payment.notes ? `${payment.notes} · ${suffix}` : suffix;
+    }
+    await payment.save();
+  }
+
+  return { voided: payments.length };
+}
+
+/** Pagos pendientes ligados a reservas ya canceladas (reparación de datos). */
+async function voidPaymentsForCancelledBookings({ unitId, organizationId }) {
+  const bookingFilter = { status: 'cancelled' };
+  if (unitId) bookingFilter.unitId = unitId;
+  if (organizationId) bookingFilter.organizationId = organizationId;
+
+  const cancelledIds = await FacilityBooking.find(bookingFilter).distinct('_id');
+  if (!cancelledIds.length) return { voided: 0 };
+
+  const payments = await Payment.find({
+    facilityBookingId: { $in: cancelledIds },
+    status: { $in: ['pending', 'overdue', 'partial'] },
+  });
+
+  for (const payment of payments) {
+    payment.status = 'cancelled';
+    payment.notes = payment.notes
+      ? `${payment.notes} · Reserva cancelada`
+      : 'Reserva cancelada';
+    await payment.save();
+  }
+
+  return { voided: payments.length };
+}
+
 async function confirmFacilityBookingPayment({ bookingId, paymentReference, amount, externalRef }) {
   const booking = await FacilityBooking.findById(bookingId || paymentReference);
   if (!booking) throw new Error('Reserva no encontrada');
@@ -78,11 +127,59 @@ async function confirmFacilityBookingPayment({ bookingId, paymentReference, amou
   booking.paidAt = now;
   await booking.save();
 
+  await booking.populate([
+    { path: 'facilityId', select: 'name' },
+    { path: 'unitId', select: 'number tower' },
+  ]);
+  const { pushFacilityBookingResidents } = require('./residentPush');
+  pushFacilityBookingResidents(booking, 'payment_received').catch(() => {});
+
   return { booking, payment, alreadyConfirmed: false };
+}
+
+/** Efectivo / transferencia en administración para una reserva con pago pendiente. */
+async function registerManualBookingPayment({ paymentId, organizationId, notes }) {
+  const payment = await Payment.findOne({
+    _id: paymentId,
+    organizationId,
+    facilityBookingId: { $ne: null },
+    status: { $in: ['pending', 'overdue', 'partial'] },
+  });
+  if (!payment) {
+    const err = new Error('Pago de reserva no encontrado o ya fue saldado');
+    err.status = 404;
+    throw err;
+  }
+
+  const owed = Math.round(Number(payment.amount) - Number(payment.paidAmount || 0));
+  if (owed <= 0) {
+    const err = new Error('Este pago ya no tiene saldo pendiente');
+    err.status = 400;
+    throw err;
+  }
+
+  const result = await confirmFacilityBookingPayment({
+    bookingId: payment.facilityBookingId,
+    amount: payment.amount,
+    externalRef: notes ? `admin · ${notes}` : 'admin manual',
+  });
+
+  if (notes && result.payment) {
+    const merged = [result.payment.notes, notes].filter(Boolean).join(' · ');
+    if (merged !== result.payment.notes) {
+      result.payment.notes = merged;
+      await result.payment.save();
+    }
+  }
+
+  return result;
 }
 
 module.exports = {
   buildCheckoutUrl,
   createPendingBookingPayment,
+  voidPendingBookingPayment,
+  voidPaymentsForCancelledBookings,
   confirmFacilityBookingPayment,
+  registerManualBookingPayment,
 };

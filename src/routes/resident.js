@@ -23,6 +23,7 @@ const {
 const {
   buildCheckoutUrl,
   createPendingBookingPayment,
+  voidPendingBookingPayment,
 } = require('../utils/facilityBookingPayment');
 const { normalizeOpenHours } = require('../utils/openHours');
 
@@ -645,6 +646,11 @@ router.post('/visitor-requests', async (req, res) => {
       notes: notes?.trim(),
     });
 
+    const { notifyPorteriaNewVisitorRequest } = require('../utils/porteriaPush');
+    notifyPorteriaNewVisitorRequest(request).catch(() => {});
+    const { pushResidentVisitorRequest } = require('../utils/residentPush');
+    pushResidentVisitorRequest(request).catch(() => {});
+
     res.status(201).json({ request });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -895,9 +901,14 @@ router.post('/facility-bookings', async (req, res) => {
 
     await booking.populate([
       { path: 'facilityId', select: 'name slug' },
-      { path: 'unitId', select: 'number' },
+      { path: 'unitId', select: 'number tower' },
       { path: 'residentId', populate: { path: 'userId', select: 'firstName lastName' } },
     ]);
+
+    const { notifyPorteriaNewFacilityBooking } = require('../utils/porteriaPush');
+    notifyPorteriaNewFacilityBooking(booking).catch(() => {});
+    const { pushFacilityBookingResidents } = require('../utils/residentPush');
+    pushFacilityBookingResidents(booking, 'created').catch(() => {});
 
     const checkoutTemplate =
       organization?.settings?.billing?.facilityBookingPaymentUrl ||
@@ -974,6 +985,14 @@ router.delete('/facility-bookings/:id', async (req, res) => {
     booking.cancelledAt = new Date();
     booking.cancelReason = 'Cancelada por el residente';
     await booking.save();
+    await voidPendingBookingPayment(booking, booking.cancelReason);
+
+    await booking.populate([
+      { path: 'facilityId', select: 'name' },
+      { path: 'unitId', select: 'number tower' },
+    ]);
+    const { pushFacilityBookingResidents } = require('../utils/residentPush');
+    pushFacilityBookingResidents(booking, 'cancelled').catch(() => {});
 
     res.json({ ok: true });
   } catch (err) {

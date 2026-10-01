@@ -11,13 +11,22 @@ const emptyForm = {
   notes: '',
 };
 
+const REQUEST_STATUS_LABELS = {
+  pending: 'Pendiente',
+  acknowledged: 'Atendida',
+  cancelled: 'Cancelada',
+};
+
 export default function VisitantesPage() {
   const [units, setUnits] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [residentRequests, setResidentRequests] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [filterUnitId, setFilterUnitId] = useState('');
   const [filterStatus, setFilterStatus] = useState('active');
   const [filterQuery, setFilterQuery] = useState('');
+  const [requestStatus, setRequestStatus] = useState('pending');
+  const [requestQuery, setRequestQuery] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
@@ -36,13 +45,27 @@ export default function VisitantesPage() {
     setVisits(data.visits || []);
   }
 
+  async function loadResidentRequests(overrides = {}) {
+    const data = await porteriaApi.visitorRequests.list({
+      status: overrides.status ?? (requestStatus || undefined),
+      q: overrides.q ?? (requestQuery || undefined),
+    });
+    setResidentRequests(data.requests || []);
+  }
+
   useEffect(() => {
-    Promise.all([loadUnits(), loadVisits()]).catch((err) => setError(err.message));
+    Promise.all([loadUnits(), loadVisits(), loadResidentRequests()]).catch((err) =>
+      setError(err.message)
+    );
   }, []);
 
   useEffect(() => {
     loadVisits().catch((err) => setError(err.message));
   }, [filterUnitId, filterStatus]);
+
+  useEffect(() => {
+    loadResidentRequests().catch((err) => setError(err.message));
+  }, [requestStatus]);
 
   async function handleRegister(e) {
     e.preventDefault();
@@ -67,6 +90,36 @@ export default function VisitantesPage() {
     }
   }
 
+  async function handleAcknowledgeRequest(requestId) {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      await porteriaApi.visitorRequests.acknowledge(requestId);
+      setSuccess('Solicitud marcada como atendida.');
+      await loadResidentRequests();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function prefillFromRequest(request) {
+    const noteParts = [
+      request.licensePlate ? `Placa ${request.licensePlate}` : '',
+      request.notes?.trim(),
+    ].filter(Boolean);
+    setForm({
+      unitId: request.unitId ? String(request.unitId) : '',
+      visitorName: request.visitorName?.trim() || '',
+      documentId: '',
+      notes: noteParts.join(' · '),
+    });
+    setSuccess('Formulario listo: completa la cédula y registra el ingreso.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   async function handleExit(visitId) {
     setSaving(true);
     setError('');
@@ -86,11 +139,124 @@ export default function VisitantesPage() {
     <div className="porteria-page">
       <header className="porteria-page__header">
         <h1>Visitantes</h1>
-        <p>Registra el ingreso de visitas a los apartamentos con nombre y cédula.</p>
+        <p>
+          Revisa avisos de residentes y registra ingresos al apartamento con nombre y cédula.
+        </p>
       </header>
 
       {error && <div className="admin-error porteria-page__alert">{error}</div>}
       {success && <div className="porteria-page__success">{success}</div>}
+
+      <div className="porteria__card">
+        <h2>Solicitudes de residentes</h2>
+        <p className="porteria__hint">
+          Visitantes que un residente registró desde la app (placa y datos). Marca como atendida
+          cuando los recibas o usa el formulario de abajo para registrar el ingreso.
+        </p>
+        <form className="admin-form" onSubmit={(e) => e.preventDefault()}>
+          <label>
+            Buscar
+            <input
+              type="search"
+              value={requestQuery}
+              onChange={(e) => setRequestQuery(e.target.value)}
+              onBlur={() => loadResidentRequests().catch((err) => setError(err.message))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  loadResidentRequests().catch((err) => setError(err.message));
+                }
+              }}
+              placeholder="Placa, nombre, unidad o residente"
+            />
+          </label>
+          <label>
+            Estado
+            <select value={requestStatus} onChange={(e) => setRequestStatus(e.target.value)}>
+              <option value="pending">Pendientes</option>
+              <option value="acknowledged">Atendidas</option>
+              <option value="">Todas</option>
+            </select>
+          </label>
+        </form>
+
+        <div className="admin-table-wrap" style={{ marginTop: '1rem' }}>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Visitante</th>
+                <th>Placa</th>
+                <th>Unidad</th>
+                <th>Residente</th>
+                <th>Esperado</th>
+                <th>Registrado</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {residentRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="admin-empty">
+                    No hay solicitudes con ese filtro.
+                  </td>
+                </tr>
+              ) : (
+                residentRequests.map((request) => (
+                  <tr key={request._id}>
+                    <td>{request.visitorName || '—'}</td>
+                    <td>{request.licensePlate || '—'}</td>
+                    <td>
+                      {request.unitCode || request.unitNumber || '—'}
+                      {request.unitTower ? ` · ${request.unitTower}` : ''}
+                    </td>
+                    <td>{request.residentName || request.residentEmail || '—'}</td>
+                    <td>{request.expectedAt ? formatDateTime(request.expectedAt) : '—'}</td>
+                    <td>{request.createdAt ? formatDateTime(request.createdAt) : '—'}</td>
+                    <td>
+                      <span
+                        className={`admin-badge admin-badge--${
+                          request.status === 'pending'
+                            ? 'pending'
+                            : request.status === 'acknowledged'
+                              ? 'paid'
+                              : 'overdue'
+                        }`}
+                      >
+                        {REQUEST_STATUS_LABELS[request.status] || request.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="porteria-unit-card__actions">
+                        {request.status === 'pending' && (
+                          <>
+                            <button
+                              type="button"
+                              className="admin-btn admin-btn--ghost"
+                              disabled={saving}
+                              onClick={() => prefillFromRequest(request)}
+                            >
+                              Registrar ingreso
+                            </button>
+                            <button
+                              type="button"
+                              className="admin-btn admin-btn--ghost"
+                              disabled={saving}
+                              onClick={() => handleAcknowledgeRequest(request._id)}
+                            >
+                              Marcar atendida
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <div className="porteria__card">
         <h2>Registrar ingreso</h2>
@@ -140,7 +306,8 @@ export default function VisitantesPage() {
       </div>
 
       <div className="porteria__card">
-        <h2>Registro de visitas</h2>
+        <h2>Registro de visitas en portería</h2>
+        <p className="porteria__hint">Ingresos y salidas que registraste aquí con cédula.</p>
         <form className="admin-form" onSubmit={(e) => e.preventDefault()}>
           <label>
             Buscar

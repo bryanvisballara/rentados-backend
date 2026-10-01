@@ -71,6 +71,43 @@ async function refreshUnitBillingStatus(unitId, organizationId) {
   await Unit.findByIdAndUpdate(unitId, { adminStatus });
 }
 
+async function settleSingleOpenPayment({ paymentId, organizationId, notes, billingSettings }) {
+  const payment = await Payment.findOne({
+    _id: paymentId,
+    organizationId,
+    status: { $in: ['pending', 'overdue', 'partial'] },
+  });
+  if (!payment) {
+    const err = new Error('Pago pendiente no encontrado');
+    err.status = 404;
+    throw err;
+  }
+  if (payment.facilityBookingId) {
+    const err = new Error('Este cobro pertenece a una reserva; usa el registro de reserva');
+    err.status = 400;
+    throw err;
+  }
+
+  const owed = Math.round(Number(payment.amount) - Number(payment.paidAmount || 0));
+  if (owed <= 0) {
+    const err = new Error('Este pago ya no tiene saldo pendiente');
+    err.status = 400;
+    throw err;
+  }
+
+  const now = new Date();
+  payment.paidAmount = payment.amount;
+  payment.status = 'paid';
+  payment.paidAt = now;
+  if (notes) payment.notes = payment.notes ? `${payment.notes} · ${notes}` : notes;
+  await payment.save();
+
+  await refreshUnitBillingStatus(payment.unitId, organizationId);
+
+  const enriched = enrichPayment(payment, billingSettings);
+  return { payment: enriched, payments: [enriched] };
+}
+
 async function registerPayment(input, context) {
   const { organization, userId } = context;
   if (!organization) throw new Error('No hay conjunto configurado');
@@ -178,5 +215,6 @@ module.exports = {
   resolvePaymentConcept,
   currentPeriod,
   refreshUnitBillingStatus,
+  settleSingleOpenPayment,
   registerPayment,
 };

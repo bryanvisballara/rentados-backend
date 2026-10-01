@@ -1,13 +1,20 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import Logo from '../components/Logo';
+import { porteriaApi } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { PORTERIA_NAV } from './porteriaNav';
+import { registerPorteriaPush } from './registerPush';
 import './PorteriaHomePage.css';
 import './PorteriaLayout.css';
 
 export default function PorteriaLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    registerPorteriaPush(porteriaApi);
+  }, []);
 
   function handleLogout() {
     logout();

@@ -218,6 +218,19 @@ async function confirmCardPayment({ paymentId, amount, externalRef, approved = t
   if (externalRef) charge.externalRef = String(externalRef);
   await charge.save();
 
+  if (charge.purpose === 'administration') {
+    const adminPayment = await Payment.findById(charge.administrationPaymentId).select(
+      'organizationId'
+    );
+    const { pushResidentCardPaymentConfirmed } = require('./residentPush');
+    pushResidentCardPaymentConfirmed({
+      userId: charge.userId,
+      organizationId: adminPayment?.organizationId,
+      amount: charge.amount,
+      purpose: charge.purpose,
+    }).catch(() => {});
+  }
+
   return { payment: formatCardPayment(charge, order), alreadyConfirmed: false };
 }
 

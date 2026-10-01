@@ -275,6 +275,54 @@ async function settleAdministrationPayments({
   return settled.map((payment) => enrichPayment(payment, billingSettings, asOf));
 }
 
+async function settleSingleAdministrationPayment({
+  paymentId,
+  organizationId,
+  unitId,
+  amount,
+  billingSettings,
+  asOf = new Date(),
+  notes = '',
+}) {
+  const payment = await Payment.findOne({
+    _id: paymentId,
+    organizationId,
+    unitId,
+    concept: 'administration',
+    status: { $in: ['pending', 'overdue', 'partial'] },
+  });
+  if (!payment) {
+    const err = new Error('Cuota de administración no encontrada');
+    err.status = 404;
+    throw err;
+  }
+
+  const enriched = enrichPayment(payment, billingSettings, asOf);
+  const owed = Math.round(Number(enriched.totalDue ?? 0));
+  const targetAmount = Math.round(Number(amount));
+  if (!Number.isFinite(targetAmount) || targetAmount <= 0) {
+    const err = new Error('El monto debe ser mayor a cero');
+    err.status = 400;
+    throw err;
+  }
+  if (targetAmount !== owed) {
+    const err = new Error(`El monto debe ser ${owed} (total de la cuota)`);
+    err.status = 400;
+    throw err;
+  }
+
+  payment.paidAmount = payment.amount;
+  payment.interestAmount = enriched.interestAmount || 0;
+  payment.status = 'paid';
+  payment.paidAt = asOf;
+  if (notes) {
+    payment.notes = payment.notes ? `${payment.notes} · ${notes}` : notes;
+  }
+  await payment.save();
+  await refreshUnitAdminStatus(unitId, organizationId);
+  return enrichPayment(payment, billingSettings, asOf);
+}
+
 module.exports = {
   isAdministrationPeriod,
   administrationPayments,
@@ -282,4 +330,5 @@ module.exports = {
   buildAdministrationOutstanding,
   resolveAdministrationCarouselView,
   settleAdministrationPayments,
+  settleSingleAdministrationPayment,
 };

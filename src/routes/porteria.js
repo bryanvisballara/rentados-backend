@@ -34,6 +34,12 @@ const {
   exitApartmentVisit,
   listApartmentVisits,
 } = require('../utils/apartmentVisit');
+const {
+  listResidentVisitorRequests,
+  acknowledgeResidentVisitorRequest,
+} = require('../utils/residentVisitorRequestPorteria');
+
+const { savePushDevice, vapidConfigured } = require('../utils/pushNotifications');
 
 const router = express.Router();
 
@@ -45,6 +51,32 @@ function requirePorteriaStaff(req, res, next) {
 }
 
 router.use(authenticate, requireRoles('ORG_STAFF'), requirePorteriaStaff);
+
+router.get('/push/public-key', (_req, res) => {
+  res.json({
+    publicKey: vapidConfigured() ? process.env.VAPID_PUBLIC_KEY : '',
+  });
+});
+
+router.post('/push-devices', async (req, res) => {
+  try {
+    const device = await savePushDevice(req.user._id, req.body || {});
+    res.status(201).json({ id: device._id, platform: device.platform });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.delete('/push-devices', async (req, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Token requerido' });
+    await require('../models').PushDevice.deleteOne({ userId: req.user._id, token });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.get('/settings', async (req, res) => {
   try {
@@ -289,6 +321,34 @@ router.get('/bitacora', async (req, res) => {
     res.json({ entries: filtered });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/visitor-requests', async (req, res) => {
+  try {
+    const { organization, building } = await getOrgContext(req.user, req);
+    if (!organization || !building) return res.json({ requests: [] });
+
+    const requests = await listResidentVisitorRequests(building._id, organization._id, {
+      unitId: req.query.unitId,
+      status: req.query.status,
+      q: req.query.q,
+      limit: Number(req.query.limit) || 100,
+    });
+
+    res.json({ requests });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/visitor-requests/:id/acknowledge', async (req, res) => {
+  try {
+    const context = await getOrgContext(req.user, req);
+    const request = await acknowledgeResidentVisitorRequest(req.params.id, context);
+    res.json({ request });
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 

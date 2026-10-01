@@ -11,6 +11,8 @@ async function notifyUnitResidents({
   lockerPackageId,
   visitorVisitId,
   residentId,
+  url,
+  meta,
 }) {
   const filter = { organizationId: organization._id, unitId };
   const residents = await Resident.find(filter).populate('userId', 'firstName lastName isActive');
@@ -35,6 +37,7 @@ async function notifyUnitResidents({
       imageUrl,
       lockerPackageId,
       visitorVisitId,
+      meta,
       read: false,
       pushSent: false,
     });
@@ -42,7 +45,7 @@ async function notifyUnitResidents({
     sendPushToUsers([resident.userId._id], {
       title,
       body,
-      url: '/app',
+      url: url || '/app',
     })
       .then(async () => {
         notification.pushSent = true;

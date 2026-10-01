@@ -16,14 +16,65 @@ const {
   RentadosHomeService,
 } = require('../models');
 const { authenticate, requireAdmin, getOrganizationFilter, formatAuthUser } = require('../middleware/auth');
-const { getBillingSettings, enrichPayment, parseAdministrationFee } = require('../utils/billing');
+const {
+  getBillingSettings,
+  enrichPayment,
+  parseAdministrationFee,
+  getUnitAdministrationFee,
+} = require('../utils/billing');
+const { syncAdministrationCharges } = require('../utils/administrationCharges');
+const {
+  buildAdministrationOutstanding,
+  settleAdministrationPayments,
+  settleSingleAdministrationPayment,
+} = require('../utils/administrationBalance');
+const { releaseHeldLockerPackages } = require('../utils/lockerPackage');
+const {
+  voidPendingBookingPayment,
+  voidPaymentsForCancelledBookings,
+  registerManualBookingPayment,
+} = require('../utils/facilityBookingPayment');
+const {
+  stampManualAdminById,
+  notifyManualPaymentRecorded,
+  voidManualAdminPayment,
+  updateManualAdminPayment,
+} = require('../utils/adminManualPayment');
+
+async function completeManualAdminPaymentSideEffects({
+  payments,
+  residentId,
+  unitId,
+  organizationId,
+  adminUserId,
+  paymentMethod,
+  notifyAmount,
+  conceptLabel,
+}) {
+  const list = Array.isArray(payments) ? payments : payments ? [payments] : [];
+  const ids = list.map((p) => p._id).filter(Boolean);
+  if (!ids.length) return;
+
+  await stampManualAdminById(ids, adminUserId, paymentMethod);
+  notifyManualPaymentRecorded({
+    residentId,
+    unitId: unitId || list[0]?.unitId,
+    organizationId,
+    amount: notifyAmount,
+    conceptLabel,
+  }).catch((err) => console.error('Push pago manual:', err.message));
+}
 const { getLockerSettings } = require('../utils/lockerSettings');
 const { getContactSettings, normalizeWhatsappNumber } = require('../utils/contactSettings');
 const { syncAutoSuspensions } = require('../utils/autoSuspension');
-const { registerPayment } = require('../utils/registerPayment');
+const { registerPayment, settleSingleOpenPayment } = require('../utils/registerPayment');
 const { getOrgContext, getScopedOrgFilter } = require('../utils/tenantContext');
 const { parseUnitFloor, inferFloorFromUnitNumber } = require('../utils/unitFloor');
-const { matchResidentQuery } = require('../utils/residentSearch');
+const {
+  matchResidentQuery,
+  matchResidentName,
+  matchResidentUsername,
+} = require('../utils/residentSearch');
 
 function parseUnitCode(value) {
   const trimmed = value?.trim();
@@ -1084,9 +1135,14 @@ router.post('/facility-bookings', async (req, res) => {
 
     await booking.populate([
       { path: 'residentId', populate: { path: 'userId', select: 'firstName lastName' } },
-      { path: 'unitId', select: 'number type' },
+      { path: 'unitId', select: 'number type tower' },
       { path: 'facilityId', select: 'name slug' },
     ]);
+
+    const { notifyPorteriaNewFacilityBooking } = require('../utils/porteriaPush');
+    notifyPorteriaNewFacilityBooking(booking).catch(() => {});
+    const { pushFacilityBookingResidents } = require('../utils/residentPush');
+    pushFacilityBookingResidents(booking, 'created').catch(() => {});
 
     res.status(201).json({ booking: formatBookingEvent(booking, { showResidentDetails: true }) });
   } catch (err) {
@@ -1103,6 +1159,8 @@ router.patch('/facility-bookings/:id', async (req, res) => {
     });
     if (!booking) return res.status(404).json({ error: 'Reserva no encontrada' });
 
+    const previousStatus = booking.status;
+
     if (req.body.status === 'confirmed') booking.status = 'confirmed';
     if (req.body.status === 'cancelled') {
       booking.status = 'cancelled';
@@ -1112,11 +1170,23 @@ router.patch('/facility-bookings/:id', async (req, res) => {
     if (req.body.notes != null) booking.notes = req.body.notes;
 
     await booking.save();
+    if (booking.status === 'cancelled') {
+      await voidPendingBookingPayment(booking, booking.cancelReason);
+    }
     await booking.populate([
       { path: 'residentId', populate: { path: 'userId', select: 'firstName lastName' } },
-      { path: 'unitId', select: 'number type' },
+      { path: 'unitId', select: 'number type tower' },
       { path: 'facilityId', select: 'name slug' },
     ]);
+
+    if (previousStatus !== booking.status) {
+      const { pushFacilityBookingResidents } = require('../utils/residentPush');
+      if (booking.status === 'confirmed') {
+        pushFacilityBookingResidents(booking, 'confirmed').catch(() => {});
+      } else if (booking.status === 'cancelled') {
+        pushFacilityBookingResidents(booking, 'cancelled').catch(() => {});
+      }
+    }
 
     res.json({ booking: formatBookingEvent(booking, { showResidentDetails: true }) });
   } catch (err) {
@@ -1137,6 +1207,14 @@ router.delete('/facility-bookings/:id', async (req, res) => {
     booking.cancelledAt = new Date();
     booking.cancelReason = 'Eliminada por administración';
     await booking.save();
+    await voidPendingBookingPayment(booking, booking.cancelReason);
+
+    await booking.populate([
+      { path: 'facilityId', select: 'name' },
+      { path: 'unitId', select: 'number tower' },
+    ]);
+    const { pushFacilityBookingResidents } = require('../utils/residentPush');
+    pushFacilityBookingResidents(booking, 'cancelled').catch(() => {});
 
     res.json({ ok: true });
   } catch (err) {
@@ -1654,13 +1732,297 @@ router.post('/service-suspensions/sync-auto', async (req, res) => {
 router.post('/payments', async (req, res) => {
   try {
     const { organization } = await getOrgContext(req.user, req);
-    const result = await registerPayment(req.body, {
-      organization,
-      userId: req.user._id,
-    });
+    const billingSettings = getBillingSettings(organization);
+    const {
+      settleAdministration,
+      settleAdministrationLine,
+      settleBookingPayment,
+      settleOpenPayment,
+      paymentMethod,
+      notes: notesInput,
+      ...body
+    } = req.body;
+
+    if (settleOpenPayment && body.paymentId && !settleBookingPayment) {
+      const resident = await Resident.findOne({
+        _id: body.residentId,
+        organizationId: organization._id,
+      }).populate('unitId');
+
+      if (!resident?.unitId) {
+        return res.status(400).json({ error: 'Residente no encontrado' });
+      }
+
+      const methodLabel =
+        paymentMethod === 'transfer'
+          ? 'Transferencia'
+          : paymentMethod === 'cash'
+            ? 'Efectivo'
+            : 'Pago en administración';
+      const notes = [methodLabel, notesInput?.trim()].filter(Boolean).join(' · ');
+
+      const openPayment = await Payment.findOne({
+        _id: body.paymentId,
+        organizationId: organization._id,
+        unitId: resident.unitId._id,
+      });
+      if (!openPayment) {
+        return res.status(404).json({ error: 'Pago no encontrado para esta unidad' });
+      }
+
+      const result = await settleSingleOpenPayment({
+        paymentId: openPayment._id,
+        organizationId: organization._id,
+        notes,
+        billingSettings,
+      });
+
+      try {
+        const { syncPaidPayments } = require('../utils/accounting');
+        await syncPaidPayments(result.payments);
+      } catch (err) {
+        console.error('No se pudo enviar el pago al software contable:', err.message);
+      }
+
+      await completeManualAdminPaymentSideEffects({
+        payments: result.payments,
+        residentId: body.residentId,
+        unitId: resident.unitId._id,
+        organizationId: organization._id,
+        adminUserId: req.user._id,
+        paymentMethod,
+        notifyAmount: Math.round(Number(result.payment?.paidAmount || result.payment?.amount || 0)),
+        conceptLabel: result.payment?.conceptLabel || result.payment?.concept,
+      });
+
+      return res.status(201).json(result);
+    }
+
+    if (settleBookingPayment && body.paymentId) {
+      const resident = await Resident.findOne({
+        _id: body.residentId,
+        organizationId: organization._id,
+      }).populate('unitId');
+
+      if (!resident?.unitId) {
+        return res.status(400).json({ error: 'Residente no encontrado' });
+      }
+
+      const openPayment = await Payment.findOne({
+        _id: body.paymentId,
+        organizationId: organization._id,
+        unitId: resident.unitId._id,
+        status: { $in: ['pending', 'overdue', 'partial'] },
+      });
+      if (!openPayment) {
+        return res.status(404).json({ error: 'Pago no encontrado para esta unidad' });
+      }
+
+      const methodLabel =
+        paymentMethod === 'transfer'
+          ? 'Transferencia'
+          : paymentMethod === 'cash'
+            ? 'Efectivo'
+            : 'Pago en administración';
+      const notes = [methodLabel, notesInput?.trim()].filter(Boolean).join(' · ');
+
+      const result = await registerManualBookingPayment({
+        paymentId: openPayment._id,
+        organizationId: organization._id,
+        notes,
+      });
+
+      try {
+        const { syncPaidPayments } = require('../utils/accounting');
+        if (result.payment) await syncPaidPayments([result.payment]);
+      } catch (err) {
+        console.error('No se pudo enviar el pago al software contable:', err.message);
+      }
+
+      await completeManualAdminPaymentSideEffects({
+        payments: result.payment ? [result.payment] : [],
+        residentId: body.residentId,
+        unitId: resident.unitId._id,
+        organizationId: organization._id,
+        adminUserId: req.user._id,
+        paymentMethod,
+        notifyAmount: Math.round(Number(result.payment?.amount || 0)),
+        conceptLabel: result.payment?.conceptLabel || 'reserva',
+      });
+
+      return res.status(201).json({
+        payment: result.payment,
+        booking: result.booking,
+        payments: result.payment ? [result.payment] : [],
+      });
+    }
+
+    if (settleAdministration || settleAdministrationLine) {
+      const resident = await Resident.findOne({
+        _id: body.residentId,
+        organizationId: organization._id,
+      }).populate('unitId');
+
+      if (!resident?.unitId) {
+        return res.status(400).json({ error: 'Residente no encontrado' });
+      }
+
+      await syncAdministrationCharges({
+        unit: resident.unitId,
+        organizationId: organization._id,
+        residentId: resident._id,
+        billingSettings,
+      });
+
+      const amount = Math.round(Number(body.amount));
+      const methodLabel =
+        paymentMethod === 'transfer'
+          ? 'Transferencia'
+          : paymentMethod === 'cash'
+            ? 'Efectivo'
+            : 'Pago en administración';
+      const notes = [methodLabel, notesInput?.trim()].filter(Boolean).join(' · ');
+
+      if (settleAdministrationLine && body.paymentId) {
+        const payment = await settleSingleAdministrationPayment({
+          paymentId: body.paymentId,
+          organizationId: organization._id,
+          unitId: resident.unitId._id,
+          amount,
+          billingSettings,
+          notes,
+        });
+
+        const updatedUnit = await Unit.findById(resident.unitId._id);
+        if (updatedUnit?.adminStatus !== 'overdue') {
+          await releaseHeldLockerPackages(resident.unitId._id, organization);
+        }
+
+        try {
+          const { syncPaidPayments } = require('../utils/accounting');
+          await syncPaidPayments([payment]);
+        } catch (err) {
+          console.error('No se pudo enviar el pago al software contable:', err.message);
+        }
+
+        await completeManualAdminPaymentSideEffects({
+          payments: [payment],
+          residentId: resident._id,
+          unitId: resident.unitId._id,
+          organizationId: organization._id,
+          adminUserId: req.user._id,
+          paymentMethod,
+          notifyAmount: amount,
+          conceptLabel: 'administración',
+        });
+
+        return res.status(201).json({ payment, payments: [payment] });
+      }
+
+      const payments = await settleAdministrationPayments({
+        organizationId: organization._id,
+        unitId: resident.unitId._id,
+        amount,
+        billingSettings,
+        notes,
+      });
+
+      if (resident.unitId.adminStatus !== 'overdue') {
+        await releaseHeldLockerPackages(resident.unitId._id, organization);
+      }
+
+      try {
+        const { syncPaidPayments } = require('../utils/accounting');
+        await syncPaidPayments(payments);
+      } catch (err) {
+        console.error('No se pudo enviar el pago al software contable:', err.message);
+      }
+
+      await completeManualAdminPaymentSideEffects({
+        payments,
+        residentId: resident._id,
+        unitId: resident.unitId._id,
+        organizationId: organization._id,
+        adminUserId: req.user._id,
+        paymentMethod,
+        notifyAmount: amount,
+        conceptLabel: 'administración',
+      });
+
+      return res.status(201).json({
+        payment: payments[payments.length - 1],
+        payments,
+      });
+    }
+
+    const methodLabel =
+      paymentMethod === 'transfer'
+        ? 'Transferencia'
+        : paymentMethod === 'cash'
+          ? 'Efectivo'
+          : null;
+    const mergedNotes = [methodLabel, notesInput?.trim()].filter(Boolean).join(' · ');
+
+    const result = await registerPayment(
+      { ...body, notes: mergedNotes || notesInput },
+      {
+        organization,
+        userId: req.user._id,
+      }
+    );
+
+    if (body.residentId && result.payments?.length) {
+      const resident = await Resident.findById(body.residentId).select('unitId');
+      await completeManualAdminPaymentSideEffects({
+        payments: result.payments,
+        residentId: body.residentId,
+        unitId: resident?.unitId,
+        organizationId: organization._id,
+        adminUserId: req.user._id,
+        paymentMethod,
+        notifyAmount: Math.round(Number(body.amount || 0)),
+        conceptLabel: result.payment?.conceptLabel || result.payment?.concept,
+      });
+    }
+
     res.status(201).json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
+  }
+});
+
+router.patch('/payments/:id', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user, req);
+    const billingSettings = getBillingSettings(organization);
+    const payment = await updateManualAdminPayment({
+      paymentId: req.params.id,
+      organizationId: organization._id,
+      adminUserId: req.user._id,
+      billingSettings,
+      paymentMethod: req.body.paymentMethod,
+      notes: req.body.notes,
+      amount: req.body.amount,
+    });
+    res.json({ payment });
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message });
+  }
+});
+
+router.post('/payments/:id/void', async (req, res) => {
+  try {
+    const { organization } = await getOrgContext(req.user, req);
+    const billingSettings = getBillingSettings(organization);
+    const payment = await voidManualAdminPayment({
+      paymentId: req.params.id,
+      organizationId: organization._id,
+      adminUserId: req.user._id,
+      billingSettings,
+    });
+    res.json({ payment });
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
@@ -1863,7 +2225,10 @@ router.get('/residents', async (req, res) => {
 
     if (req.query.tower) {
       const tower = req.query.tower.toLowerCase();
-      result = result.filter((r) => (r.unitId?.tower || '').toLowerCase() === tower);
+      result = result.filter((r) => {
+        const unitTower = (r.unitId?.tower || r.unitId?.towerId?.name || '').toLowerCase();
+        return unitTower === tower;
+      });
     }
 
     if (req.query.relationship) {
@@ -1872,6 +2237,14 @@ router.get('/residents', async (req, res) => {
 
     if (req.query.q) {
       result = result.filter((r) => matchResidentQuery(r, req.query.q));
+    }
+
+    if (req.query.name) {
+      result = result.filter((r) => matchResidentName(r, req.query.name));
+    }
+
+    if (req.query.username) {
+      result = result.filter((r) => matchResidentUsername(r, req.query.username));
     }
 
     res.json({ residents: result });
@@ -1894,14 +2267,41 @@ router.get('/residents/:id', async (req, res) => {
     }
     const billingSettings = getBillingSettings(organization);
 
-    const payments = await Payment.find({ unitId: resident.unitId })
+    await syncAdministrationCharges({
+      unit: resident.unitId,
+      organizationId: organization._id,
+      residentId: resident._id,
+      billingSettings,
+    });
+
+    await voidPaymentsForCancelledBookings({
+      unitId: resident.unitId._id,
+      organizationId: organization._id,
+    });
+
+    const payments = await Payment.find({ unitId: resident.unitId._id })
       .populate('facilityId', 'name')
-      .sort({ dueDate: -1 })
-      .limit(24);
+      .populate('facilityBookingId', 'startAt endAt status')
+      .sort({ paidAt: -1, dueDate: -1 })
+      .limit(72);
+
+    const enriched = payments.map((p) => enrichPayment(p, billingSettings));
+    const adminOutstanding = buildAdministrationOutstanding(enriched);
+    const openPayments = enriched.filter((p) =>
+      ['pending', 'overdue', 'partial'].includes(p.status)
+    );
+    const totalOpenDue = openPayments.reduce(
+      (sum, p) => sum + Number(p.totalDue ?? Math.max(0, p.amount - (p.paidAmount || 0))),
+      0
+    );
 
     res.json({
       resident,
-      payments: payments.map((p) => enrichPayment(p, billingSettings)),
+      payments: enriched,
+      adminOutstanding,
+      totalOpenDue,
+      openPayments,
+      monthlyAdministrationFee: getUnitAdministrationFee(resident.unitId, billingSettings),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

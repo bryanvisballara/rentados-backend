@@ -429,6 +429,11 @@ router.post('/publications', async (req, res) => {
       createdBy: req.user._id,
     });
 
+    const { pushPlatformPublication } = require('../utils/residentPush');
+    pushPlatformPublication(publication).catch((err) =>
+      console.error('Push publicación plataforma:', err.message)
+    );
+
     res.status(201).json({ publication });
   } catch (err) {
     res.status(400).json({ error: err.message });

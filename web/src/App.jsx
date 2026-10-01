@@ -25,6 +25,7 @@ import FacilityBookingsPage from './admin/pages/FacilityBookingsPage';
 import PublicationsPage from './admin/pages/PublicationsPage';
 import PorteriaPage from './admin/pages/PorteriaPage';
 import VisitorParkingPage from './admin/pages/VisitorParkingPage';
+import AdminPaymentsPage from './admin/pages/AdminPaymentsPage';
 import CarteraPage from './admin/pages/CarteraPage';
 import AccountingPage from './admin/pages/AccountingPage';
 import CarteraDetailPage from './admin/pages/CarteraDetailPage';
@@ -108,6 +109,7 @@ export default function App() {
         <Route path="porteria" element={<PorteriaPage />} />
         <Route path="parqueaderos" element={<VisitorParkingPage />} />
         <Route path="contabilidad" element={<AccountingPage />} />
+        <Route path="pagos" element={<AdminPaymentsPage />} />
         <Route path="cartera" element={<CarteraPage />} />
         <Route path="cartera/:view" element={<CarteraDetailPage />} />
         <Route path="morosidad" element={<MorosidadPage />} />

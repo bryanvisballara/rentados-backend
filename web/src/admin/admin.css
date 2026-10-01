@@ -699,6 +699,49 @@
   font-size: 0.875rem;
 }
 
+.admin-muted {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.admin-form__wide {
+  grid-column: 1 / -1;
+}
+
+.admin-form--payments-search {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+  .admin-form--payments-search {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-payments-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.admin-payments-results__btn {
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+}
+
+.admin-payments-results__btn--active {
+  border-color: var(--color-green);
+  background: #eef6f0;
+}
+
+.admin-payments-other {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.875rem;
+}
+
 .admin-link {
   color: var(--color-green);
   text-decoration: none;

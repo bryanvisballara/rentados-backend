@@ -246,6 +246,8 @@ export const adminApi = {
   },
   payments: {
     create: (body) => api('/admin/payments', { method: 'POST', body }),
+    update: (id, body) => api(`/admin/payments/${id}`, { method: 'PATCH', body }),
+    void: (id) => api(`/admin/payments/${id}/void`, { method: 'POST' }),
   },
   residents: {
     list: (params = {}) => {
@@ -260,6 +262,8 @@ export const adminApi = {
 };
 
 export const porteriaApi = {
+  pushPublicKey: () => api('/porteria/push/public-key'),
+  registerPushDevice: (body) => api('/porteria/push-devices', { method: 'POST', body }),
   settings: () => api('/porteria/settings'),
   residents: () => api('/porteria/residents'),
   units: () => api('/porteria/units'),
@@ -289,6 +293,14 @@ export const porteriaApi = {
     summary: () => api('/porteria/parking/summary'),
     registerEntry: (body) => api('/porteria/parking/entries', { method: 'POST', body }),
     registerExit: (body) => api('/porteria/parking/exit', { method: 'POST', body }),
+  },
+  visitorRequests: {
+    list: (params = {}) => {
+      const q = buildQueryString(params);
+      return api(`/porteria/visitor-requests${q ? `?${q}` : ''}`);
+    },
+    acknowledge: (id) =>
+      api(`/porteria/visitor-requests/${id}/acknowledge`, { method: 'PATCH' }),
   },
   apartmentVisits: {
     list: (params = {}) => {

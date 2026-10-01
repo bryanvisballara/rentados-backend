@@ -7,6 +7,7 @@ export const ADMIN_NAV = [
   { to: '/admin/publicaciones', label: 'Publicaciones' },
   { to: '/admin/porteria', label: 'Recepción/Portería' },
   { to: '/admin/parqueaderos', label: 'Parqueaderos' },
+  { to: '/admin/pagos', label: 'Pagos' },
   { to: '/admin/cartera', label: 'Cartera' },
   { to: '/admin/contabilidad', label: 'Contabilidad' },
   { to: '/admin/morosidad', label: 'Administración/Condominio' },

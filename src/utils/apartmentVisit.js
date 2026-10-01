@@ -56,6 +56,9 @@ async function registerApartmentVisit(input, context) {
     .populate('unitId', 'number code tower')
     .populate('registeredBy', 'firstName lastName');
 
+  const { pushApartmentVisitResidents } = require('./residentPush');
+  pushApartmentVisitResidents(populated, 'entry').catch(() => {});
+
   return formatApartmentVisit(populated);
 }
 
@@ -79,6 +82,9 @@ async function exitApartmentVisit(visitId, context) {
     .populate('unitId', 'number code tower')
     .populate('registeredBy', 'firstName lastName')
     .populate('exitedBy', 'firstName lastName');
+
+  const { pushApartmentVisitResidents } = require('./residentPush');
+  pushApartmentVisitResidents(populated, 'exit').catch(() => {});
 
   return formatApartmentVisit(populated);
 }

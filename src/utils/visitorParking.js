@@ -200,6 +200,9 @@ async function registerVisitorExit(input, context) {
     .populate('registeredBy', 'firstName lastName')
     .populate('exitedBy', 'firstName lastName');
 
+  const { pushVisitorParkingExitResidents } = require('./residentPush');
+  pushVisitorParkingExitResidents(populated).catch(() => {});
+
   return formatVisit(populated);
 }
 

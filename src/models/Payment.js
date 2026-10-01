@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const PAYMENT_STATUSES = ['paid', 'pending', 'overdue', 'partial'];
+const PAYMENT_STATUSES = ['paid', 'pending', 'overdue', 'partial', 'cancelled'];
 
 const paymentSchema = new mongoose.Schema(
   {
@@ -50,6 +50,13 @@ const paymentSchema = new mongoose.Schema(
       index: true,
     },
     notes: { type: String },
+    manualAdmin: {
+      registeredAt: { type: Date },
+      registeredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      paymentMethod: { type: String, enum: ['cash', 'transfer'] },
+      voidedAt: { type: Date },
+      voidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    },
     accountingInvoiceId: { type: String, trim: true },
     accountingPaymentId: { type: String, trim: true },
   },
