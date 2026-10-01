@@ -96,14 +96,53 @@ function saveResidentLoginContext(ctx) {
   sessionStorage.setItem(RESIDENT_LOGIN_CTX_KEY, JSON.stringify(ctx));
 }
 
+function useNarrowLoginViewport(maxWidth = 899) {
+  const [narrow, setNarrow] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia(`(max-width: ${maxWidth}px)`).matches : false
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${maxWidth}px)`);
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [maxWidth]);
+
+  return narrow;
+}
+
+const PHONE_STAFF_SWITCH_LINKS = [
+  { label: 'Residentes', to: '/login' },
+  { label: 'Portería', to: '/porteria/login' },
+];
+
 export default function LoginPage({ portal = 'resident', redirectTo }) {
   const config = LOGIN_PORTALS[portal] ?? LOGIN_PORTALS.resident;
   const isResidentPortal = portal === 'resident';
+  const isStaffPortal = portal === 'admin' || portal === 'porteria';
+  const isPhoneViewport = useNarrowLoginViewport();
   const savedCtx = isResidentPortal ? loadResidentLoginContext() : null;
+
+  const portalSwitchLinks = useMemo(() => {
+    if (isPhoneViewport && portal === 'admin') return PHONE_STAFF_SWITCH_LINKS;
+    if (isPhoneViewport && portal === 'porteria') {
+      return [
+        { label: 'Residentes', to: '/login' },
+        { label: 'Administración', to: '/admin/login' },
+      ];
+    }
+    return config.switchLinks;
+  }, [config.switchLinks, isPhoneViewport, portal]);
 
   const { loginSuccess } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  function goToAdminLogin() {
+    if (!isPhoneViewport || !isResidentPortal) return;
+    navigate('/admin/login');
+  }
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -295,10 +334,22 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
       )}
       {isResidentPortal && (
         <header className="login-welcome__top">
-          <div className="login-welcome__brand">
-            <img src="/assets/logo.png" alt="" />
-            <span>rentados</span>
-          </div>
+          {isPhoneViewport ? (
+            <button
+              type="button"
+              className="login-welcome__brand login-welcome__brand--secret"
+              onClick={goToAdminLogin}
+              aria-label="Rentados"
+            >
+              <img src="/assets/app-icon.jpg" alt="" />
+              <span>rentados</span>
+            </button>
+          ) : (
+            <div className="login-welcome__brand">
+              <img src="/assets/logo.png" alt="" />
+              <span>rentados</span>
+            </div>
+          )}
           <h1>Bienvenido</h1>
           <p>{config.subtitle}</p>
         </header>
@@ -520,10 +571,19 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
               </nav>
             </>
           ) : (
-          <nav className="login__portal-nav login-animate-in login-animate-in--8" aria-label="Otros portales">
-            <p className="login__portal-nav-label">{config.switchPrompt}</p>
+          <nav
+            className={`login__portal-nav login-animate-in login-animate-in--8${
+              isPhoneViewport && isStaffPortal ? ' login__portal-nav--phone-staff' : ''
+            }`}
+            aria-label="Otros portales"
+          >
+            <p className="login__portal-nav-label">
+              {isPhoneViewport && portal === 'admin'
+                ? 'Cambiar portal'
+                : config.switchPrompt}
+            </p>
             <div className="login__portal-nav-links">
-              {config.switchLinks.map((link, index) => (
+              {portalSwitchLinks.map((link, index) => (
                 <span key={link.to}>
                   {index > 0 && <span className="login__portal-nav-sep">·</span>}
                   <Link to={link.to} className="login__portal-nav-link">

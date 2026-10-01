@@ -593,6 +593,30 @@
   color: var(--color-text-placeholder);
 }
 
+.login__portal-nav--phone-staff {
+  margin-top: 1.25rem;
+  padding-top: 1.15rem;
+  border-top: 1px solid #e3ddd3;
+}
+
+.login__portal-nav--phone-staff .login__portal-nav-label {
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b918c;
+}
+
+.login__portal-nav--phone-staff .login__portal-nav-links {
+  gap: 0.75rem 1rem;
+  font-size: 0.9375rem;
+}
+
+.login__portal-nav--phone-staff .login__portal-nav-link {
+  color: #1b3b2e;
+  font-weight: 600;
+}
+
 .login__footer {
   margin-top: 1.5rem;
   text-align: center;
@@ -681,6 +705,27 @@ html.rentados-native-shell .login--welcome {
   font-weight: 600;
   letter-spacing: -0.04em;
   color: #1b3b2e;
+}
+
+button.login-welcome__brand--secret {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.login-welcome__brand--secret:active {
+  opacity: 0.88;
+}
+
+button.login-welcome__brand--secret:focus-visible {
+  outline: 2px solid rgba(27, 59, 46, 0.35);
+  outline-offset: 4px;
+  border-radius: 12px;
 }
 
 .login-welcome__top h1 {
