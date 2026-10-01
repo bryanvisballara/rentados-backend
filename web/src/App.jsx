@@ -1,4 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
+import { homePathForUser } from './utils/homePath';
+import './components/ProtectedRoute.css';
 import LoginPage from './pages/LoginPage';
 import LegalPage from './pages/LegalPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -48,6 +51,24 @@ import CasilleroPage from './porteria/pages/CasilleroPage';
 import VisitantesPage from './porteria/pages/VisitantesPage';
 import NotificationsPage from './porteria/pages/NotificationsPage';
 import ReservasPage from './porteria/pages/ReservasPage';
+
+function RootRedirect() {
+  const { ready, isAuthenticated, user } = useAuth();
+
+  if (!ready) {
+    return (
+      <div className="auth-loading">
+        <p>Cargando sesión…</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  const home = homePathForUser(user);
+  if (home === '/login') return <Navigate to="/login" replace />;
+  return <Navigate to={home} replace />;
+}
 
 export default function App() {
   return (
@@ -152,7 +173,7 @@ export default function App() {
         <Route path="servicios-conjunto" element={<ResidentFacilitiesPage />} />
       </Route>
 
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/" element={<RootRedirect />} />
     </Routes>
   );
 }

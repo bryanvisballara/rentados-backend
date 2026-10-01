@@ -30,10 +30,10 @@ export function persistSession(session) {
   window.dispatchEvent(new CustomEvent('rentados:session', { detail: session }));
 }
 
-export function clearSession() {
+export function clearSession({ clearNative = true } = {}) {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(STORAGE_KEY);
-  syncNativeAuthBackup(null);
+  if (clearNative) syncNativeAuthBackup(null);
   window.dispatchEvent(new CustomEvent('rentados:session', { detail: null }));
 }
 
@@ -103,7 +103,7 @@ export async function hydrateSession() {
       stored = loadSession();
     }
     if (!stored?.token) {
-      clearSession();
+      clearSession({ clearNative: false });
       return null;
     }
 

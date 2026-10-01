@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Logo from '../components/Logo';
 import { LOGIN_PORTALS } from '../config/loginPortals';
 import { useAuth } from '../context/AuthContext';
+import { homePathForUser } from '../utils/homePath';
 import { fetchLoginBuildings, fetchLoginCountries, login as loginApi } from '../api/client';
 import { setActiveTenant } from '../api/tenantContext';
 import { formatBuildingAddressLine, formatBuildingLoginLabel } from '../utils/buildingAddress';
@@ -135,7 +136,7 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
     return config.switchLinks;
   }, [config.switchLinks, isPhoneViewport, portal]);
 
-  const { loginSuccess } = useAuth();
+  const { loginSuccess, ready, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -176,6 +177,13 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
     const timer = window.setTimeout(() => setShowSplash(false), 1000);
     return () => window.clearTimeout(timer);
   }, [isResidentPortal]);
+
+  useEffect(() => {
+    if (!ready || !isAuthenticated) return;
+    const home = homePathForUser(user);
+    if (!home || home === '/login' || location.pathname === home) return;
+    navigate(home, { replace: true });
+  }, [ready, isAuthenticated, user, navigate, location.pathname]);
 
   useEffect(() => {
     if (!isResidentPortal) return undefined;

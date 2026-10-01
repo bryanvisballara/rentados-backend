@@ -128,7 +128,12 @@ struct WebView: UIViewRepresentable {
         }
 
         let dataStore = WKWebsiteDataStore.default()
-        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        let types: Set<String> = [
+            WKWebsiteDataTypeDiskCache,
+            WKWebsiteDataTypeMemoryCache,
+            WKWebsiteDataTypeFetchCache,
+            WKWebsiteDataTypeOfflineWebApplicationCache,
+        ]
         dataStore.fetchDataRecords(ofTypes: types) { records in
             let rentadosRecords = records.filter {
                 $0.displayName.localizedCaseInsensitiveContains("rentados")
@@ -304,6 +309,11 @@ struct WebView: UIViewRepresentable {
             guard let raw = message.body as? String else { return }
             if message.name == "pushSession" {
                 authToken = raw
+                let existing = UserDefaults.standard.string(forKey: WebView.authSessionDefaultsKey) ?? ""
+                if !existing.contains(raw) {
+                    let payload = "{\"token\":\"\(raw.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\"}"
+                    UserDefaults.standard.set(payload, forKey: WebView.authSessionDefaultsKey)
+                }
                 uploadPushToken()
                 return
             }
