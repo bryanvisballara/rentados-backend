@@ -37,12 +37,22 @@ function residentLabel(resident) {
   return `${name} — ${unit}${login}`;
 }
 
+function looksLikeAdminManualNotes(notes) {
+  const raw = String(notes || '').trim();
+  if (!raw) return false;
+  const n = raw.toLowerCase();
+  if (/tarjeta|tok_|webhook|cuota pagada en línea|ref local-/i.test(n)) return false;
+  if (n === 'efectivo' || n === 'transferencia') return true;
+  if (/^(efectivo|transferencia|pago en administración)\b/i.test(raw)) return true;
+  if (/\s·\s*(efectivo|transferencia)\b/i.test(raw)) return true;
+  return false;
+}
+
 function isManualEditablePayment(payment) {
-  return (
-    payment?.manualAdmin?.registeredAt &&
-    !payment?.manualAdmin?.voidedAt &&
-    payment?.status === 'paid'
-  );
+  if (!payment || payment.status !== 'paid') return false;
+  if (payment.manualAdmin?.voidedAt) return false;
+  if (payment.manualAdmin?.registeredAt) return true;
+  return looksLikeAdminManualNotes(payment.notes);
 }
 
 function manualPaymentTotal(payment) {
@@ -245,7 +255,11 @@ export default function AdminPaymentsPage() {
     setEditPaymentModal({
       payment,
       amount: String(Math.round(manualPaymentTotal(payment))),
-      paymentMethod: payment.manualAdmin?.paymentMethod || 'cash',
+      paymentMethod:
+        payment.manualAdmin?.paymentMethod ||
+        (looksLikeAdminManualNotes(payment.notes) && /transferencia/i.test(payment.notes || '')
+          ? 'transfer'
+          : 'cash'),
       notes: '',
     });
   }

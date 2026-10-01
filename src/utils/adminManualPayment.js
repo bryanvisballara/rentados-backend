@@ -14,6 +14,39 @@ function formatCop(amount) {
   }).format(Number(amount || 0));
 }
 
+function looksLikeAdminManualNotes(notes) {
+  const raw = String(notes || '').trim();
+  if (!raw) return false;
+  const n = raw.toLowerCase();
+  if (/tarjeta|tok_|webhook|cuota pagada en línea|ref local-/i.test(n)) return false;
+  if (n === 'efectivo' || n === 'transferencia') return true;
+  if (/^(efectivo|transferencia|pago en administración)\b/i.test(raw)) return true;
+  if (/\s·\s*(efectivo|transferencia)\b/i.test(raw)) return true;
+  return false;
+}
+
+function inferManualPaymentMethodFromNotes(notes) {
+  return /transferencia/i.test(String(notes || '')) ? 'transfer' : 'cash';
+}
+
+function isManualAdminEditable(payment) {
+  if (!payment || payment.status !== 'paid') return false;
+  if (payment.manualAdmin?.voidedAt) return false;
+  if (payment.manualAdmin?.registeredAt) return true;
+  return looksLikeAdminManualNotes(payment.notes);
+}
+
+async function ensureManualAdminStamp(payment, adminUserId) {
+  if (!payment || payment.manualAdmin?.registeredAt) return payment;
+  stampManualAdmin(
+    payment,
+    adminUserId,
+    inferManualPaymentMethodFromNotes(payment.notes)
+  );
+  await payment.save();
+  return payment;
+}
+
 function stampManualAdmin(payment, adminUserId, paymentMethod) {
   if (!payment) return payment;
   payment.manualAdmin = {
@@ -86,19 +119,19 @@ async function notifyManualPaymentRecorded({
 }
 
 function assertEditableManual(payment) {
-  if (!payment?.manualAdmin?.registeredAt) {
-    const err = new Error('Solo se pueden editar pagos registrados manualmente en administración');
-    err.status = 403;
+  if (payment.status !== 'paid') {
+    const err = new Error('Solo se pueden editar pagos en estado pagado');
+    err.status = 400;
     throw err;
   }
-  if (payment.manualAdmin.voidedAt) {
+  if (payment.manualAdmin?.voidedAt) {
     const err = new Error('Este pago manual ya fue anulado');
     err.status = 400;
     throw err;
   }
-  if (payment.status !== 'paid') {
-    const err = new Error('Solo se pueden editar pagos en estado pagado');
-    err.status = 400;
+  if (!isManualAdminEditable(payment)) {
+    const err = new Error('Solo se pueden editar pagos registrados manualmente en administración');
+    err.status = 403;
     throw err;
   }
 }
@@ -131,6 +164,7 @@ async function voidManualAdminPayment({ paymentId, organizationId, adminUserId, 
     throw err;
   }
   assertEditableManual(payment);
+  await ensureManualAdminStamp(payment, adminUserId);
 
   const voidedAmount =
     Number(payment.paidAmount || payment.amount || 0) + Number(payment.interestAmount || 0);
@@ -167,13 +201,14 @@ async function updateManualAdminPayment({
     throw err;
   }
   assertEditableManual(payment);
+  await ensureManualAdminStamp(payment, adminUserId);
 
   const methodLabel =
     paymentMethod === 'transfer'
       ? 'Transferencia'
       : paymentMethod === 'cash'
         ? 'Efectivo'
-        : payment.manualAdmin.paymentMethod === 'transfer'
+        : payment.manualAdmin?.paymentMethod === 'transfer'
           ? 'Transferencia'
           : 'Efectivo';
   const noteParts = [methodLabel, notes?.trim()].filter(Boolean);
@@ -246,6 +281,8 @@ module.exports = {
   stampManualAdmin,
   stampManualAdminById,
   notifyManualPaymentRecorded,
+  looksLikeAdminManualNotes,
+  isManualAdminEditable,
   voidManualAdminPayment,
   updateManualAdminPayment,
 };
