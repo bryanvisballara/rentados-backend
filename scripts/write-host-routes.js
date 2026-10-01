@@ -21,6 +21,7 @@ const routes = [
   'admin/parqueaderos',
   'admin/contabilidad',
   'admin/cartera',
+  'admin/pagos',
   'admin/morosidad',
   'admin/residentes',
   'super-admin',
