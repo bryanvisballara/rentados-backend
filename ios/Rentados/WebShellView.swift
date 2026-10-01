@@ -68,6 +68,7 @@ struct WebView: UIViewRepresentable {
         controller.add(context.coordinator, name: "openExternal")
         controller.add(context.coordinator, name: "pushSession")
         controller.add(context.coordinator, name: "authSession")
+        controller.add(context.coordinator, name: "appBadge")
         let storedAuth = UserDefaults.standard.string(forKey: Self.authSessionDefaultsKey) ?? ""
         controller.addUserScript(WKUserScript(
             source: Self.openExternalScript,
@@ -81,6 +82,11 @@ struct WebView: UIViewRepresentable {
         ))
         controller.addUserScript(WKUserScript(
             source: Self.authBridgeScript(storedSession: storedAuth),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+        controller.addUserScript(WKUserScript(
+            source: Self.appBadgeScript,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
@@ -169,6 +175,17 @@ struct WebView: UIViewRepresentable {
       }
       setInterval(tick, 2000);
       tick();
+    })();
+    """
+
+    private static let appBadgeScript = """
+    (function () {
+      window.RentadosNative = window.RentadosNative || {};
+      var handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.appBadge;
+      if (!handler) return;
+      window.RentadosNative.setAppBadge = function (count) {
+        handler.postMessage(String(count == null ? 0 : count));
+      };
     })();
     """
 
@@ -296,6 +313,13 @@ struct WebView: UIViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "appBadge" {
+                let count = Int(message.body as? String ?? "") ?? 0
+                DispatchQueue.main.async {
+                    UIApplication.shared.applicationIconBadgeNumber = max(0, count)
+                }
+                return
+            }
             if message.name == "authSession" {
                 guard let body = message.body as? [String: Any],
                       let action = body["action"] as? String else { return }

@@ -348,6 +348,7 @@ export const residentApi = {
   services: () => api('/resident/services'),
   myBookings: () => api('/resident/my-bookings'),
   notifications: () => api('/resident/notifications'),
+  clearNotifications: () => api('/resident/notifications/clear', { method: 'POST' }),
   markNotificationRead: (id) => api(`/resident/notifications/${id}/read`, { method: 'PATCH' }),
   lockerPackages: () => api('/resident/locker-packages'),
   shop: () => api('/resident/shop'),

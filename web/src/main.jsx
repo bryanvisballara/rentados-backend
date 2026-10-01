@@ -17,17 +17,10 @@ const isNativeShell =
 function syncNativeViewport() {
   if (!document.documentElement.classList.contains('rentados-native-shell')) return;
   const root = document.documentElement;
-  const nativeScreen = parseFloat(
-    getComputedStyle(root).getPropertyValue('--screen-height'),
-  );
-  const layout = Math.max(
-    window.innerHeight || 0,
-    root.clientHeight || 0,
-    document.body?.clientHeight || 0,
-  );
-  const height = Math.round(Math.max(layout, Number.isFinite(nativeScreen) ? nativeScreen : 0));
-  if (height > 0) {
-    root.style.setProperty('--app-height', `${height}px`);
+  const visual = Math.round(window.visualViewport?.height || window.innerHeight || 0);
+  if (visual > 0) {
+    root.style.setProperty('--app-height', `${visual}px`);
+    root.style.setProperty('--screen-height', `${visual}px`);
   }
 }
 

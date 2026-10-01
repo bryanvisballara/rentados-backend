@@ -178,9 +178,20 @@ html.rentados-native-shell .resident-hero__content {
   -webkit-backdrop-filter: blur(16px) saturate(1.25);
 }
 
+html.rentados-native-shell .resident-app__main {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
 html.rentados-native-shell .resident-app__nav,
 html.rentados-native-shell .resident-sos-fab {
   position: fixed;
+}
+
+html.rentados-native-shell .resident-app__nav {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: #2d3321;
 }
 
 html.rentados-native-shell .resident-app__nav {
@@ -556,6 +567,118 @@ html.rentados-native-shell .resident-sos-fab {
   font-weight: 500;
   line-height: 1.15;
   max-width: 16ch;
+}
+
+.resident-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.resident-hero__bell {
+  position: relative;
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.resident-hero__bell-badge {
+  position: absolute;
+  top: -0.28rem;
+  right: -0.28rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.22rem;
+  border-radius: 999px;
+  background: #d93025;
+  color: #fff;
+  border: 2px solid #fff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resident-notices__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.resident-notices__head h2 {
+  margin: 0;
+}
+
+.resident-notices__clear {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 51, 33, 0.16);
+  background: #fff;
+  color: #1e5a3d;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.resident-notices__clear:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.resident-notices__hint {
+  margin: 0.75rem 0 0;
+  color: #6b655c;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.resident-notices__list {
+  list-style: none;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.resident-notices__list li {
+  padding: 0.85rem 0.9rem;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(45, 51, 33, 0.08);
+}
+
+.resident-notices__list p {
+  margin: 0;
+  font-weight: 650;
+  color: #2d3321;
+}
+
+.resident-notices__list span,
+.resident-notices__list small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #6b655c;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.resident-notices__item--locked {
+  border-color: rgba(217, 48, 37, 0.25);
 }
 
 .resident-hero__logout {

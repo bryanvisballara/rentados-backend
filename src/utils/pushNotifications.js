@@ -3,7 +3,8 @@ const jwt = require('jsonwebtoken');
 const webpush = require('web-push');
 const admin = require('firebase-admin');
 const { getMessaging } = require('firebase-admin/messaging');
-const { PushDevice, Resident, Unit } = require('../models');
+const { PushDevice, Resident, ResidentNotification, Unit } = require('../models');
+const { badgeCountsForUsers } = require('./appBadge');
 
 const STATUS_COPY = {
   pending: 'Pendiente',
@@ -79,6 +80,7 @@ function sendApns(deviceToken, payload) {
     aps: {
       alert: { title: payload.title, body: payload.body },
       sound: 'push_rentados.wav',
+      ...(Number.isInteger(payload.badge) ? { badge: payload.badge } : {}),
     },
     url: payload.url || '/app',
   });
@@ -111,21 +113,16 @@ function sendApns(deviceToken, payload) {
 async function sendFcm(device, payload) {
   if (!ensureFirebase()) return;
   try {
+    const badge = Number.isInteger(payload.badge) ? payload.badge : 0;
     await getMessaging().send({
       token: device.token,
-      notification: { title: payload.title, body: payload.body },
       data: {
         title: payload.title || 'Rentados',
         body: payload.body || '',
         url: payload.url || '/app',
+        badge: String(badge),
       },
-      android: {
-        priority: 'high',
-        notification: {
-          channelId: 'rentados_alerts',
-          sound: 'push_rentados',
-        },
-      },
+      android: { priority: 'high' },
       apns: {
         headers: {
           'apns-priority': '10',
@@ -136,6 +133,7 @@ async function sendFcm(device, payload) {
           aps: {
             alert: { title: payload.title, body: payload.body },
             sound: 'push_rentados.wav',
+            badge,
           },
         },
       },
@@ -191,9 +189,18 @@ async function sendPushToUsers(userIds, payload) {
   const ids = [...new Set((userIds || []).map((id) => String(id)).filter(Boolean))];
   if (!ids.length) return;
   const devices = await PushDevice.find({ userId: { $in: ids } });
+  let badges = {};
+  try {
+    badges = await badgeCountsForUsers(ids);
+  } catch (err) {
+    console.error('Badge count failed', err.message);
+  }
   await Promise.all(
     devices.map((device) =>
-      sendToDevice(device, payload).catch((err) => {
+      sendToDevice(device, {
+        ...payload,
+        badge: badges[String(device.userId)] ?? payload.badge,
+      }).catch((err) => {
         console.error('Push device failed', device.platform, err.code || '', err.message);
       })
     )
@@ -208,15 +215,30 @@ async function notifyNewPublication(publication) {
     filter.towerId = { $in: publication.audienceTowerIds };
   }
   const units = await Unit.find(filter).select('_id');
-  const residents = await Resident.find({ unitId: { $in: units.map((unit) => unit._id) } }).select('userId');
+  const residents = await Resident.find({ unitId: { $in: units.map((unit) => unit._id) } }).select(
+    'userId organizationId unitId'
+  );
   const excerpt = String(publication.body || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  const title = publication.title || 'Nueva publicación';
+  const body = excerpt || 'Hay un aviso nuevo en tu conjunto.';
+  const docs = residents
+    .filter((resident) => resident.userId)
+    .map((resident) => ({
+      organizationId: resident.organizationId || publication.organizationId,
+      userId: resident.userId,
+      residentId: resident._id,
+      unitId: resident.unitId,
+      type: 'publication',
+      title,
+      body,
+      read: false,
+      dismissed: false,
+      meta: { publicationId: publication._id },
+    }));
+  if (docs.length) await ResidentNotification.insertMany(docs);
   await sendPushToUsers(
-    residents.map((resident) => resident.userId),
-    {
-      title: publication.title || 'Nueva publicación',
-      body: excerpt || 'Hay un aviso nuevo en tu conjunto.',
-      url: '/app',
-    }
+    docs.map((doc) => doc.userId),
+    { title, body, url: '/app' }
   );
 }
 

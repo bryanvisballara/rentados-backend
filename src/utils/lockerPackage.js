@@ -1,6 +1,7 @@
 const { LockerPackage, Resident, ResidentNotification, Unit, VisitorParkingVisit } = require('../models');
 const { getLockerSettings } = require('./lockerSettings');
 const { notifyUnitResidents } = require('./porteriaNotify');
+const { dismissLockerArrivalNotices } = require('./appBadge');
 
 function formatPackage(pkg) {
   const doc = pkg?.toObject ? pkg.toObject() : pkg;
@@ -192,6 +193,7 @@ async function markPackagePickedUp(packageId, context, options = {}) {
   pkg.signatureRecipientName = options.signatureRecipientName?.trim() || undefined;
   pkg.signatureData = options.signatureData || undefined;
   await pkg.save();
+  await dismissLockerArrivalNotices(pkg._id);
 
   await notifyUnitResidents({
     organization,

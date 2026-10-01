@@ -21,6 +21,7 @@ class RentadosFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        message.data["badge"]?.toIntOrNull()?.let { AppBadge.set(this, it) }
         val title = message.notification?.title ?: message.data["title"] ?: getString(R.string.app_name)
         val body = message.notification?.body ?: message.data["body"] ?: ""
         if (body.isBlank() && title.isBlank()) return

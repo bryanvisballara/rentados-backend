@@ -49,6 +49,12 @@ class RentadosJsBridge(
     }
 
     @JavascriptInterface
+    fun setAppBadge(count: String) {
+        val value = count.trim().toIntOrNull() ?: 0
+        com.rentados.app.push.AppBadge.set(context, value)
+    }
+
+    @JavascriptInterface
     fun clearAuthSession() {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit {
             remove(AUTH_SESSION_KEY)

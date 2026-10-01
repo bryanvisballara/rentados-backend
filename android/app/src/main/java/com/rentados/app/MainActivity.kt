@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var jsBridge: RentadosJsBridge
     private var latestPushToken = ""
+    private var lastSafeAreaSignature = ""
 
     private val pushTokenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -106,7 +107,10 @@ class MainActivity : AppCompatActivity() {
             addJavascriptInterface(jsBridge, "RentadosNative")
             webChromeClient = WebChromeClient()
             webViewClient = RentadosWebViewClient(
-                onPageStarted = { showOffline(false) },
+                onPageStarted = {
+                    lastSafeAreaSignature = ""
+                    showOffline(false)
+                },
                 onPageFinished = { webView ->
                     showOffline(false)
                     jsBridge.injectBridgeScripts(webView)
@@ -177,12 +181,10 @@ class MainActivity : AppCompatActivity() {
             applySafeAreaCss(binding.webView)
             insets
         }
-        binding.root.viewTreeObserver.addOnGlobalLayoutListener {
-            applySafeAreaCss(binding.webView)
-        }
     }
 
     private fun applySafeAreaCss(webView: WebView) {
+        if (webView.height <= 0) return
         val windowInsets = ViewCompat.getRootWindowInsets(binding.root)
         val status = windowInsets?.getInsets(WindowInsetsCompat.Type.statusBars())
         val nav = windowInsets?.getInsets(WindowInsetsCompat.Type.navigationBars())
@@ -190,22 +192,47 @@ class MainActivity : AppCompatActivity() {
         val right = nav?.right?.coerceAtLeast(0) ?: 0
         val bottom = nav?.bottom?.coerceAtLeast(0) ?: 0
         val left = nav?.left?.coerceAtLeast(0) ?: 0
-        val appHeight = listOf(binding.root.height, binding.webView.height, resources.displayMetrics.heightPixels)
-            .firstOrNull { it > 0 }
-            ?: resources.displayMetrics.heightPixels
-        val dockGap = (10 * resources.displayMetrics.density).toInt().coerceAtLeast(8)
-        val navDockBottom = bottom + dockGap
-        val edgeTop = (8 * resources.displayMetrics.density).toInt().coerceAtLeast(6)
+        val signature = "$top,$right,$bottom,$left,${webView.height}"
+        if (signature == lastSafeAreaSignature) return
+        lastSafeAreaSignature = signature
+        // Physical px. The page converts with devicePixelRatio so the dock stays on the real bottom.
         val js = """
-            document.documentElement.classList.add('rentados-native-shell');
-            document.documentElement.style.setProperty('--safe-top', '${top}px');
-            document.documentElement.style.setProperty('--safe-right', '${right}px');
-            document.documentElement.style.setProperty('--safe-bottom', '${bottom}px');
-            document.documentElement.style.setProperty('--safe-left', '${left}px');
-            document.documentElement.style.setProperty('--screen-height', '${appHeight}px');
-            document.documentElement.style.setProperty('--resident-nav-dock-bottom', '${navDockBottom}px');
-            document.documentElement.style.setProperty('--resident-edge-top', '${edgeTop}px');
-            if (window.__rentadosSyncViewport) window.__rentadosSyncViewport();
+            (function() {
+              var dpr = window.devicePixelRatio || 1;
+              var css = function(px) { return Math.max(0, Math.round(px / dpr)); };
+              var root = document.documentElement;
+              root.classList.add('rentados-native-shell');
+              root.style.setProperty('--safe-top', css($top) + 'px');
+              root.style.setProperty('--safe-right', css($right) + 'px');
+              root.style.setProperty('--safe-bottom', css($bottom) + 'px');
+              root.style.setProperty('--safe-left', css($left) + 'px');
+              root.style.setProperty('--screen-height', css(${webView.height}) + 'px');
+              root.style.setProperty('--app-height', css(${webView.height}) + 'px');
+              root.style.setProperty('--resident-nav-dock-bottom', (css($bottom) + 8) + 'px');
+              root.style.setProperty('--resident-edge-top', '8px');
+              var style = document.getElementById('rentados-native-fix');
+              if (!style) {
+                style = document.createElement('style');
+                style.id = 'rentados-native-fix';
+                style.textContent = [
+                  'html.rentados-native-shell,html.rentados-native-shell body,html.rentados-native-shell #root,html.rentados-native-shell .resident-app{height:var(--app-height,100dvh)!important;max-height:var(--app-height,100dvh)!important;overflow:hidden!important;}',
+                  'html.rentados-native-shell .resident-app__main{overflow-y:auto!important;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;}',
+                  'html.rentados-native-shell .resident-app__nav,html.rentados-native-shell .resident-sos-fab{position:fixed!important;}',
+                  'html.rentados-native-shell .resident-app__nav{bottom:var(--resident-nav-dock-bottom,8px)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;}',
+                  'html.rentados-native-shell .resident-sos-fab{bottom:calc(var(--resident-nav-bar-height,3rem) + var(--resident-nav-dock-bottom,8px) + 0.65rem)!important;}',
+                  'html.rentados-native-shell .resident-modal-overlay{position:fixed;inset:0;}'
+                ].join('');
+                document.head.appendChild(style);
+              }
+              window.__rentadosSyncViewport = function() {
+                var visual = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight || 0);
+                if (visual > 0) {
+                  root.style.setProperty('--app-height', visual + 'px');
+                  root.style.setProperty('--screen-height', visual + 'px');
+                }
+              };
+              window.__rentadosSyncViewport();
+            })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
     }

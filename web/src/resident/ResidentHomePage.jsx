@@ -23,6 +23,16 @@ const DEFAULT_HERO =
 const PLACEHOLDER_PUB =
   'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80';
 
+function syncNativeAppBadge(count) {
+  const native = window.RentadosNative;
+  if (!native || typeof native.setAppBadge !== 'function') return;
+  try {
+    native.setAppBadge(String(Math.max(0, Number(count) || 0)));
+  } catch {
+    /* El navegador no tiene ícono de app. */
+  }
+}
+
 const PRICING_LABELS = {
   free: 'Gratis',
   per_use: 'Por uso',
@@ -69,6 +79,8 @@ export default function ResidentHomePage() {
     notes: '',
   });
   const [savingVisitor, setSavingVisitor] = useState(false);
+  const [notices, setNotices] = useState([]);
+  const [clearingNotices, setClearingNotices] = useState(false);
 
   useEffect(() => {
     document.title = home?.building?.name
@@ -83,14 +95,17 @@ export default function ResidentHomePage() {
       residentApi.services(),
       residentApi.publications().catch(() => ({ publications: [] })),
       residentApi.lockerPackages().catch(() => ({ enabled: false, packages: [] })),
+      residentApi.notifications().catch(() => ({ notifications: [], badge: 0 })),
     ])
-      .then(([homeData, services, pubs, locker]) => {
+      .then(([homeData, services, pubs, locker, inbox]) => {
         if (cancelled) return;
         const nextPublications = pubs.publications || [];
         setHome(homeData);
         setServicesData(services);
         setPublications(nextPublications);
         setLockerData(locker);
+        setNotices(inbox.notifications || []);
+        syncNativeAppBadge(inbox.badge || 0);
         setResidentHomeCache({
           home: homeData,
           servicesData: services,
@@ -132,6 +147,22 @@ export default function ResidentHomePage() {
 
   const lockerPackageCount =
     lockerData?.enabled && lockerData?.packages?.length ? lockerData.packages.length : 0;
+  const clearableNotices = notices.some((notice) => !notice.locked);
+
+  async function clearNotices() {
+    if (!clearableNotices || clearingNotices) return;
+    setClearingNotices(true);
+    setError('');
+    try {
+      const inbox = await residentApi.clearNotifications();
+      setNotices(inbox.notifications || []);
+      syncNativeAppBadge(inbox.badge || 0);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setClearingNotices(false);
+    }
+  }
 
   const statusText =
     home?.unit?.adminStatus === 'overdue'
@@ -189,9 +220,36 @@ export default function ResidentHomePage() {
         <div className="resident-hero__content">
           <div className="resident-hero__top">
             <h1 className="resident-hero__building">{buildingName}</h1>
-            <button type="button" className="resident-hero__logout" onClick={onLogout}>
-              Salir
-            </button>
+            <div className="resident-hero__actions">
+              <button
+                type="button"
+                className="resident-hero__bell"
+                onClick={() => setModal('notices')}
+                aria-label={
+                  notices.length
+                    ? `Avisos, ${notices.length} pendiente(s)`
+                    : 'Avisos'
+                }
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M6 9a6 6 0 1 1 12 0c0 4 1.5 5.5 1.5 5.5H4.5S6 13 6 9Z"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M10 18a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+                {notices.length > 0 && (
+                  <span className="resident-hero__bell-badge">
+                    {notices.length > 9 ? '9+' : notices.length}
+                  </span>
+                )}
+              </button>
+              <button type="button" className="resident-hero__logout" onClick={onLogout}>
+                Salir
+              </button>
+            </div>
           </div>
           <p className="resident-hero__greeting">Hola, {home?.user?.firstName || 'residente'}</p>
           <p className="resident-hero__unit">{unitLabel}</p>
@@ -343,6 +401,49 @@ export default function ResidentHomePage() {
           </div>
         )}
       </section>
+      )}
+
+      {modal === 'notices' && (
+        <ResidentOverlay>
+          <div className="resident-modal-overlay" onClick={() => setModal(null)}>
+            <div className="resident-modal resident-notices" onClick={(e) => e.stopPropagation()}>
+              <header className="resident-notices__head">
+                <h2>Avisos</h2>
+                <button
+                  type="button"
+                  className="resident-notices__clear"
+                  onClick={clearNotices}
+                  disabled={!clearableNotices || clearingNotices}
+                  aria-label="Borrar avisos"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+                    <path d="M8 12.5 10.5 15 16 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </header>
+              <p className="resident-notices__hint">
+                El número del casillero se quita cuando portería entrega el paquete.
+              </p>
+              {notices.length === 0 ? (
+                <p className="resident-empty">No tienes avisos nuevos.</p>
+              ) : (
+                <ul className="resident-notices__list">
+                  {notices.map((notice) => (
+                    <li key={notice.id} className={notice.locked ? 'resident-notices__item--locked' : ''}>
+                      <p>{notice.title}</p>
+                      {notice.body && <span>{notice.body}</span>}
+                      <small>
+                        {notice.createdAt ? formatDateTime(notice.createdAt) : ''}
+                        {notice.locked ? ' · Casillero' : ''}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </ResidentOverlay>
       )}
 
       {modal === 'locker' && showSection('casillero') && (

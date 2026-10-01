@@ -1003,18 +1003,26 @@ router.delete('/facility-bookings/:id', async (req, res) => {
 router.get('/notifications', async (req, res) => {
   try {
     const resident = await getResidentContext(req.user);
-    const notifications = await ResidentNotification.find({
-      userId: req.user._id,
-      organizationId: resident.organizationId,
-    })
-      .sort({ createdAt: -1 })
-      .limit(40);
-
-    const unreadCount = notifications.filter((n) => !n.read).length;
-
-    res.json({ notifications, unreadCount });
+    const { loadInbox } = require('../utils/appBadge');
+    const inbox = await loadInbox(req.user._id, resident.organizationId, resident.unitId._id);
+    res.json({ ...inbox, unreadCount: inbox.alerts });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/notifications/clear', async (req, res) => {
+  try {
+    const resident = await getResidentContext(req.user);
+    const { clearDismissibleNotifications } = require('../utils/appBadge');
+    const inbox = await clearDismissibleNotifications(
+      req.user._id,
+      resident.organizationId,
+      resident.unitId._id
+    );
+    res.json({ ...inbox, unreadCount: inbox.alerts });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
