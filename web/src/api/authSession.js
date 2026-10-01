@@ -2,7 +2,8 @@ import { API_BASE } from './apiBase';
 import { restoreNativeAuthFromBackup, syncNativeAuthBackup } from './nativeAuthBackup';
 
 const STORAGE_KEY = 'rentados_auth';
-/** Residente móvil: sesión persistente (≈10 años); configurable vía JWT_EXPIRES_IN en el servidor */
+/** Residente móvil: sesión persistente (≈10 años); configurable vía JWT_EXPIRES_IN en el servidor.
+ *  Varios teléfonos pueden usar la misma cuenta a la vez (cada uno conserva su propio token). */
 const TOKEN_KEY = 'rentados_token';
 
 let hydratePromise = null;

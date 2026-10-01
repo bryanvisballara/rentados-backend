@@ -10,6 +10,12 @@ const {
 
 const ACTIVE_WINDOW_MS = 30 * 60 * 1000;
 const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
+/** Mismo usuario en varios teléfonos (p. ej. pareja); no expulsar al iniciar sesión en otro dispositivo */
+const MAX_USER_SESSIONS = Math.max(
+  2,
+  Number.parseInt(process.env.MAX_USER_SESSIONS || '16', 10) || 16
+);
+const TOKEN_REFRESH_BEFORE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function getSessionExpiryDate() {
   const expiresIn = process.env.JWT_EXPIRES_IN || '3650d';
@@ -77,6 +83,40 @@ async function createUserSession(user, req, jti, portal) {
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
+
+  await pruneUserSessions(user._id, jti);
+}
+
+async function pruneUserSessions(userId, keepJti = null) {
+  const now = new Date();
+  await UserSession.deleteMany({
+    userId,
+    expiresAt: { $lte: now },
+  });
+
+  const sessions = await UserSession.find({ userId })
+    .sort({ lastSeenAt: -1 })
+    .select('_id jti lastSeenAt')
+    .lean();
+
+  if (sessions.length <= MAX_USER_SESSIONS) return;
+
+  const protectedJti = keepJti ? String(keepJti) : null;
+  const overflow = sessions.slice(MAX_USER_SESSIONS);
+  const idsToRemove = overflow
+    .filter((session) => !protectedJti || session.jti !== protectedJti)
+    .map((session) => session._id);
+
+  if (idsToRemove.length) {
+    await UserSession.deleteMany({ _id: { $in: idsToRemove } });
+  }
+}
+
+function tokenNeedsRefresh(payload) {
+  if (!payload?.jti) return true;
+  if (!payload.exp) return true;
+  const expiresAtMs = payload.exp * 1000;
+  return expiresAtMs - Date.now() < TOKEN_REFRESH_BEFORE_MS;
 }
 
 async function touchUserSession(jti) {
@@ -112,8 +152,11 @@ function decodeTokenJti(token) {
 
 module.exports = {
   ACTIVE_WINDOW_MS,
+  MAX_USER_SESSIONS,
   createUserSession,
   touchUserSession,
+  pruneUserSessions,
+  tokenNeedsRefresh,
   createTokenJti,
   decodeTokenJti,
   resolveSessionBuildingId,

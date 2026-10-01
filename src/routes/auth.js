@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { User, ServiceProvider, ServiceCategory, Building, Resident, Organization } = require('../models');
 const { signToken, authenticate, formatAuthUser } = require('../middleware/auth');
 const { deleteResidentAccount } = require('../utils/deleteResidentAccount');
-const { createUserSession } = require('../utils/userSession');
+const { createUserSession, tokenNeedsRefresh, touchUserSession } = require('../utils/userSession');
 const { listAccessibleBuildings } = require('../utils/tenantContext');
 const { formatServiceCategory, resolveActiveCategoryIds } = require('../utils/serviceCategory');
 
@@ -190,8 +190,21 @@ router.post('/login', async (req, res) => {
 });
 
 router.get('/me', authenticate, async (req, res) => {
-  const { token, jti } = signToken(req.user);
-  await createUserSession(req.user, req, jti, null).catch(() => {});
+  const bearer = req.headers.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.slice(7)
+    : null;
+  const payload = req.auth;
+
+  if (payload?.jti) {
+    await touchUserSession(payload.jti).catch(() => {});
+  }
+
+  let token = bearer;
+  if (!token || tokenNeedsRefresh(payload)) {
+    const signed = signToken(req.user);
+    token = signed.token;
+    await createUserSession(req.user, req, signed.jti, null).catch(() => {});
+  }
 
   res.json({
     token,
