@@ -79,6 +79,13 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::binding.isInitialized && !binding.webView.url.isNullOrBlank()) {
+            jsBridge.checkDeployUpdate(binding.webView)
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
         jsBridge = RentadosJsBridge(this, lifecycleScope, fcmTokenProvider = { latestPushToken })
@@ -91,6 +98,7 @@ class MainActivity : AppCompatActivity() {
                 databaseEnabled = true
                 mediaPlaybackRequiresUserGesture = false
                 mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                cacheMode = WebSettings.LOAD_NO_CACHE
                 userAgentString = "$userAgentString RentadosAndroid/${BuildConfig.VERSION_NAME}"
             }
 
@@ -139,9 +147,12 @@ class MainActivity : AppCompatActivity() {
         showOffline(false)
         ensureFreshWebCache()
         val url = AppConfig.webUrl
-        binding.webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        val headers = mapOf(
+            "Cache-Control" to "no-cache",
+            "Pragma" to "no-cache",
+        )
         if (forceReload || binding.webView.url?.startsWith(url.substringBefore('?')) != true) {
-            binding.webView.loadUrl(url)
+            binding.webView.loadUrl(url, headers)
         } else {
             binding.webView.reload()
         }
@@ -153,8 +164,6 @@ class MainActivity : AppCompatActivity() {
         val current = BuildConfig.VERSION_CODE.toString()
         if (prefs.getString(key, null) == current) return
         binding.webView.clearCache(true)
-        CookieManager.getInstance().removeAllCookies(null)
-        CookieManager.getInstance().flush()
         prefs.edit().putString(key, current).apply()
     }
 

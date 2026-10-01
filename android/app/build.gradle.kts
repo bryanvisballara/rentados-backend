@@ -30,7 +30,7 @@ android {
         applicationId = "com.rentados.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
+        versionCode = 5
         versionName = "1.1"
 
         buildConfigField(

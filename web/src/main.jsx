@@ -3,10 +3,12 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { restoreNativeAuthFromBackup } from './api/nativeAuthBackup';
 import { AuthProvider } from './context/AuthContext';
+import { initDeployWatcher } from './utils/deployWatcher';
 import App from './App';
 import './styles/global.css';
 
 restoreNativeAuthFromBackup();
+initDeployWatcher();
 
 const isNativeShell =
   /RentadosAndroid/i.test(navigator.userAgent) ||

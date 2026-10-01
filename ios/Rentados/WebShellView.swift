@@ -8,13 +8,14 @@ enum LocalApp {
     static let pushDevicesURL = URL(string: "http://192.168.1.60:3000/api/v1/resident/push-devices")!
     static let offlineMessage = "En la Mac tiene que estar corriendo el servidor local, en el puerto 5578."
     #else
-    static let url = URL(string: "https://rentados.app")!
+    static let url = URL(string: "https://rentados.app/")!
     static let pushDevicesURL = URL(string: "https://rentados-backend.onrender.com/api/v1/resident/push-devices")!
     static let offlineMessage = "Revisa tu conexión e intenta de nuevo."
     #endif
 }
 
 struct WebShellView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var attempt = 0
     @State private var failed = false
 
@@ -41,7 +42,16 @@ struct WebShellView: View {
                 .frame(maxWidth: 360)
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                NotificationCenter.default.post(name: .rentadosAppDidBecomeActive, object: nil)
+            }
+        }
     }
+}
+
+extension Notification.Name {
+    static let rentadosAppDidBecomeActive = Notification.Name("rentadosAppDidBecomeActive")
 }
 
 struct WebView: UIViewRepresentable {
@@ -74,6 +84,11 @@ struct WebView: UIViewRepresentable {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
+        controller.addUserScript(WKUserScript(
+            source: Self.deployWatcherScript,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        ))
         configuration.userContentController = controller
 
         let webView = SafeAreaWebView(frame: .zero, configuration: configuration)
@@ -99,7 +114,9 @@ struct WebView: UIViewRepresentable {
     private static func loadFresh(webView: WKWebView, url: URL) {
         let performLoad = {
             var request = URLRequest(url: url)
-            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+            request.setValue("no-cache", forHTTPHeaderField: "Pragma")
             webView.load(request)
         }
 
@@ -182,6 +199,42 @@ struct WebView: UIViewRepresentable {
         """
     }
 
+    private static let deployWatcherScript = """
+    (function () {
+      if (window.__rentadosDeployWatch) return;
+      window.__rentadosDeployWatch = true;
+      function moduleScriptSrc() {
+        var el = document.querySelector('script[type="module"][src*="/assets/index-"]');
+        return el ? el.getAttribute('src') || '' : '';
+      }
+      var bootBuildEl = document.querySelector('meta[name="rentados-build"]');
+      var bootBuild = bootBuildEl ? bootBuildEl.content : '';
+      function check() {
+        fetch('/index.html?_=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' })
+          .then(function (r) { return r.text(); })
+          .then(function (html) {
+            var buildMatch = html.match(/name="rentados-build"\\s+content="([^"]+)"/);
+            if (buildMatch && bootBuild && buildMatch[1] !== bootBuild) {
+              location.reload();
+              return;
+            }
+            var assetMatch = html.match(/src="(\\/assets\\/index-[^"]+\\.js)"/);
+            var remoteAsset = assetMatch ? assetMatch[1] : '';
+            var localAsset = moduleScriptSrc();
+            if (remoteAsset && localAsset && remoteAsset !== localAsset) {
+              location.reload();
+            }
+          })
+          .catch(function () {});
+      }
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') check();
+      });
+      window.__rentadosCheckDeploy = check;
+      setTimeout(check, 800);
+    })();
+    """
+
     private static let openExternalScript = """
     (function () {
       var native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openExternal;
@@ -216,6 +269,24 @@ struct WebView: UIViewRepresentable {
 
         init(failed: Binding<Bool>) {
             _failed = failed
+            super.init()
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(appDidBecomeActive),
+                name: .rentadosAppDidBecomeActive,
+                object: nil
+            )
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        @objc private func appDidBecomeActive() {
+            webView?.evaluateJavaScript(
+                "window.__rentadosCheckDeploy && window.__rentadosCheckDeploy();",
+                completionHandler: nil
+            )
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
