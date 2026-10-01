@@ -190,11 +190,8 @@ router.post('/login', async (req, res) => {
 });
 
 router.get('/me', authenticate, async (req, res) => {
-  const token = req.headers.authorization?.slice(7);
-  if (req.auth?.jti) {
-    const { touchUserSession } = require('../utils/userSession');
-    await touchUserSession(req.auth.jti).catch(() => {});
-  }
+  const { token, jti } = signToken(req.user);
+  await createUserSession(req.user, req, jti, null).catch(() => {});
 
   res.json({
     token,

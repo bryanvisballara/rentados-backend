@@ -22,7 +22,7 @@ function signToken(user) {
       jti,
     },
     getJwtSecret(),
-    { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '3650d' }
   );
   return { token, jti };
 }

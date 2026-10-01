@@ -8,9 +8,13 @@ import {
   IconCar,
   IconChevronRight,
   IconHeadset,
-  IconHeart,
   IconPackage,
 } from './components/ResidentIcons';
+import { ResidentOverlay } from './ResidentLayout';
+import {
+  getResidentHomeCache,
+  setResidentHomeCache,
+} from './residentHomeCache';
 import './ResidentLayout.css';
 
 const DEFAULT_HERO =
@@ -44,15 +48,20 @@ function servicePriceLabel(service) {
 }
 
 export default function ResidentHomePage() {
-  const { onLogout } = useOutletContext();
+  const { onLogout, sectionEnabled } = useOutletContext();
+  const showSection = (key) => (sectionEnabled ? sectionEnabled(key) : true);
   const navigate = useNavigate();
-  const [home, setHome] = useState(null);
-  const [servicesData, setServicesData] = useState(null);
-  const [publications, setPublications] = useState([]);
-  const [lockerData, setLockerData] = useState(null);
+  const initialCache = getResidentHomeCache();
+  const [home, setHome] = useState(initialCache?.home ?? null);
+  const [servicesData, setServicesData] = useState(initialCache?.servicesData ?? null);
+  const [publications, setPublications] = useState(initialCache?.publications ?? []);
+  const [lockerData, setLockerData] = useState(initialCache?.lockerData ?? null);
+  const [contentReady, setContentReady] = useState(Boolean(initialCache?.home));
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [modal, setModal] = useState(null);
+  const [lockerPhotoPreview, setLockerPhotoPreview] = useState('');
+  const [publicationZoom, setPublicationZoom] = useState(false);
   const [visitorForm, setVisitorForm] = useState({
     visitorName: '',
     licensePlate: '',
@@ -68,6 +77,7 @@ export default function ResidentHomePage() {
   }, [home?.building?.name]);
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([
       residentApi.home(),
       residentApi.services(),
@@ -75,13 +85,39 @@ export default function ResidentHomePage() {
       residentApi.lockerPackages().catch(() => ({ enabled: false, packages: [] })),
     ])
       .then(([homeData, services, pubs, locker]) => {
+        if (cancelled) return;
+        const nextPublications = pubs.publications || [];
         setHome(homeData);
         setServicesData(services);
-        setPublications(pubs.publications || []);
+        setPublications(nextPublications);
         setLockerData(locker);
+        setResidentHomeCache({
+          home: homeData,
+          servicesData: services,
+          publications: nextPublications,
+          lockerData: locker,
+        });
+        setContentReady(true);
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setContentReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!lockerPhotoPreview) return undefined;
+    function onKeyDown(e) {
+      if (e.key === 'Escape') setLockerPhotoPreview('');
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [lockerPhotoPreview]);
 
   const featuredServices = useMemo(
     () => (servicesData?.services || []).slice(0, 4),
@@ -94,11 +130,14 @@ export default function ResidentHomePage() {
     ? `Apto ${home.unit.number}${home.unit.tower ? ` · Torre ${home.unit.tower}` : ''}`
     : 'Tu unidad';
 
+  const lockerPackageCount =
+    lockerData?.enabled && lockerData?.packages?.length ? lockerData.packages.length : 0;
+
   const statusText =
     home?.unit?.adminStatus === 'overdue'
       ? 'Tienes pagos pendientes'
-      : lockerData?.packages?.length
-        ? `${lockerData.packages.length} paquete(s) en portería`
+      : lockerPackageCount
+        ? `${lockerPackageCount} paquete(s) en portería`
         : 'Todo en orden';
 
   async function submitVisitor(e) {
@@ -173,19 +212,35 @@ export default function ResidentHomePage() {
         </div>
       </section>
 
-      <div className="resident-quick">
+      <div
+        className="resident-quick"
+        style={{
+          gridTemplateColumns: `repeat(${
+            [showSection('casillero'), showSection('visitantes'), true, true].filter(Boolean).length
+          }, minmax(0, 1fr))`,
+        }}
+      >
+        {showSection('casillero') && (
         <button type="button" className="resident-quick__item" onClick={() => setModal('locker')}>
           <span className="resident-quick__circle">
             <IconPackage width={22} height={22} />
+            {lockerPackageCount > 0 && (
+              <span className="resident-quick__badge" aria-label={`${lockerPackageCount} paquete(s) pendientes`}>
+                {lockerPackageCount > 9 ? '9+' : lockerPackageCount}
+              </span>
+            )}
           </span>
           <span className="resident-quick__label">Casillero</span>
         </button>
+        )}
+        {showSection('visitantes') && (
         <button type="button" className="resident-quick__item" onClick={() => setModal('visitor')}>
           <span className="resident-quick__circle">
             <IconCar width={22} height={22} />
           </span>
           <span className="resident-quick__label">Registrar visitantes</span>
         </button>
+        )}
         <button type="button" className="resident-quick__item" onClick={() => openContact('reception')}>
           <span className="resident-quick__circle">
             <IconHeadset width={22} height={22} />
@@ -203,6 +258,7 @@ export default function ResidentHomePage() {
       {error && <div className="resident-error">{error}</div>}
       {success && <div className="resident-success">{success}</div>}
 
+      {showSection('reservas') && (
       <section className="resident-section">
         <div className="resident-section__head">
           <h2>Servicios &amp; reservas</h2>
@@ -222,7 +278,9 @@ export default function ResidentHomePage() {
         )}
 
         <div className="resident-services-grid">
-          {featuredServices.length === 0 ? (
+          {!contentReady && featuredServices.length === 0 ? (
+            <div className="resident-home-skeleton resident-home-skeleton--grid" aria-hidden="true" />
+          ) : featuredServices.length === 0 ? (
             <p className="resident-empty" style={{ gridColumn: '1 / -1' }}>
               No hay servicios del conjunto configurados.
             </p>
@@ -243,13 +301,17 @@ export default function ResidentHomePage() {
           )}
         </div>
       </section>
+      )}
 
+      {showSection('publicaciones') && (
       <section className="resident-section">
         <div className="resident-section__head">
           <h2>Publicaciones</h2>
         </div>
 
-        {publications.length === 0 ? (
+        {!contentReady && publications.length === 0 ? (
+          <div className="resident-home-skeleton resident-home-skeleton--pubs" aria-hidden="true" />
+        ) : publications.length === 0 ? (
           <p className="resident-empty">No hay publicaciones recientes del conjunto.</p>
         ) : (
           <div className="resident-pubs">
@@ -266,9 +328,6 @@ export default function ResidentHomePage() {
                   className="resident-pub-card__image"
                 />
                 <div className="resident-pub-card__overlay" />
-                <span className="resident-pub-card__heart" aria-hidden="true">
-                  <IconHeart width={16} height={16} />
-                </span>
                 <div className="resident-pub-card__body">
                   <h3>{pub.title}</h3>
                   <p className="resident-pub-card__meta">
@@ -284,9 +343,17 @@ export default function ResidentHomePage() {
           </div>
         )}
       </section>
+      )}
 
-      {modal === 'locker' && (
-        <div className="resident-modal-overlay" onClick={() => setModal(null)}>
+      {modal === 'locker' && showSection('casillero') && (
+        <ResidentOverlay>
+        <div
+          className="resident-modal-overlay"
+          onClick={() => {
+            setLockerPhotoPreview('');
+            setModal(null);
+          }}
+        >
           <div className="resident-modal" onClick={(e) => e.stopPropagation()}>
             <h2>Casillero / paquetes</h2>
             {!lockerData?.enabled ? (
@@ -294,29 +361,88 @@ export default function ResidentHomePage() {
             ) : lockerData.packages.length === 0 ? (
               <p className="resident-empty">No tienes paquetes pendientes por recoger.</p>
             ) : (
-              <ul className="resident-list">
+              <ul className="resident-locker-list">
                 {lockerData.packages.map((pkg) => (
-                  <li key={pkg._id} className="resident-list-item">
-                    <img src={pkg.photoUrl} alt="Paquete" />
-                    <div>
-                      <h3>{pkg.status === 'held' ? 'En retención' : 'Listo para recoger'}</h3>
-                      <p>Recibido {formatDateTime(pkg.createdAt)}</p>
-                      {pkg.comment && <p>{pkg.comment}</p>}
+                  <li key={pkg._id || pkg.id} className="resident-locker-item">
+                    {pkg.photoUrl ? (
+                      <button
+                        type="button"
+                        className="resident-locker-item__photo-btn"
+                        onClick={() => setLockerPhotoPreview(pkg.photoUrl)}
+                        aria-label="Ver foto del paquete ampliada"
+                      >
+                        <img
+                          src={pkg.photoUrl}
+                          alt=""
+                          className="resident-locker-item__photo"
+                          loading="lazy"
+                        />
+                      </button>
+                    ) : (
+                      <div className="resident-locker-item__photo resident-locker-item__photo--placeholder" aria-hidden>
+                        <IconPackage width={28} height={28} />
+                      </div>
+                    )}
+                    <div className="resident-locker-item__body">
+                      <h3 className="resident-locker-item__title">
+                        {pkg.status === 'held' ? 'En retención' : 'Listo para recoger'}
+                      </h3>
+                      <p className="resident-locker-item__meta">
+                        Recibido {formatDateTime(pkg.createdAt)}
+                      </p>
+                      {pkg.comment ? (
+                        <p className="resident-locker-item__comment">{pkg.comment}</p>
+                      ) : null}
                     </div>
                   </li>
                 ))}
               </ul>
             )}
             <div className="resident-actions">
-              <button type="button" className="resident-btn resident-btn--ghost" onClick={() => setModal(null)}>
+              <button
+                type="button"
+                className="resident-btn resident-btn--ghost"
+                onClick={() => {
+                  setLockerPhotoPreview('');
+                  setModal(null);
+                }}
+              >
                 Cerrar
               </button>
             </div>
           </div>
         </div>
+        </ResidentOverlay>
       )}
 
-      {modal === 'visitor' && (
+      {lockerPhotoPreview && (
+        <ResidentOverlay>
+        <div
+          className="resident-photo-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Foto del paquete"
+          onClick={() => setLockerPhotoPreview('')}
+        >
+          <button
+            type="button"
+            className="resident-photo-lightbox__close"
+            onClick={() => setLockerPhotoPreview('')}
+          >
+            Cerrar
+          </button>
+          <img
+            src={lockerPhotoPreview}
+            alt="Foto del paquete"
+            className="resident-photo-lightbox__image"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+        </ResidentOverlay>
+      )}
+
+      {modal === 'visitor' && showSection('visitantes') && (
+        <ResidentOverlay>
         <div className="resident-modal-overlay" onClick={() => setModal(null)}>
           <div className="resident-modal" onClick={(e) => e.stopPropagation()}>
             <h2>Registrar visitante</h2>
@@ -369,25 +495,74 @@ export default function ResidentHomePage() {
             </form>
           </div>
         </div>
+        </ResidentOverlay>
       )}
 
-      {modal?.type === 'publication' && (
-        <div className="resident-modal-overlay" onClick={() => setModal(null)}>
-          <div className="resident-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{modal.pub.title}</h2>
-            {modal.pub.publishedAt && (
-              <p className="resident-page__subtitle">{formatDateTime(modal.pub.publishedAt)}</p>
-            )}
-            <p>{modal.pub.body || 'Sin descripción.'}</p>
-            <div className="resident-actions">
-              <button type="button" className="resident-btn" onClick={() => setModal(null)}>
-                Cerrar
+      {modal?.type === 'publication' && showSection('publicaciones') && (
+        <ResidentOverlay>
+          <div
+            className="resident-modal-overlay"
+            onClick={() => {
+              setPublicationZoom(false);
+              setModal(null);
+            }}
+          >
+            <article className="resident-pub-detail" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="resident-pub-detail__zoom"
+                onClick={() => setPublicationZoom(true)}
+                aria-label="Ver imagen completa"
+              >
+                <img
+                  src={modal.pub.imageUrl || PLACEHOLDER_PUB}
+                  alt=""
+                  className="resident-pub-detail__image"
+                />
               </button>
-            </div>
+              <div className="resident-pub-detail__body">
+                <h2>{modal.pub.title}</h2>
+                {modal.pub.publishedAt && (
+                  <p className="resident-pub-detail__date">{formatDateTime(modal.pub.publishedAt)}</p>
+                )}
+                <p className="resident-pub-detail__text">{modal.pub.body || 'Sin descripción.'}</p>
+                <button
+                  type="button"
+                  className="resident-btn"
+                  onClick={() => {
+                    setPublicationZoom(false);
+                    setModal(null);
+                  }}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </article>
+            {publicationZoom && (
+              <div
+                className="resident-photo-lightbox"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Imagen de la publicación"
+                onClick={() => setPublicationZoom(false)}
+              >
+                <button
+                  type="button"
+                  className="resident-photo-lightbox__close"
+                  onClick={() => setPublicationZoom(false)}
+                >
+                  Cerrar
+                </button>
+                <img
+                  src={modal.pub.imageUrl || PLACEHOLDER_PUB}
+                  alt={modal.pub.title || 'Publicación'}
+                  className="resident-photo-lightbox__image resident-photo-lightbox__image--full"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            )}
           </div>
-        </div>
-      )}
-
+        </ResidentOverlay>
       )}
     </div>
   );

@@ -131,6 +131,11 @@ async function sendFcm(device, payload) {
 }
 
 async function sendToDevice(device, payload) {
+  if (device.platform === 'android') {
+    await sendFcm(device, payload);
+    return;
+  }
+
   if (device.platform === 'ios') {
     if (isApnsToken(device.token) && apnsConfigured()) {
       const status = await sendApns(device.token, payload);
@@ -198,7 +203,21 @@ async function notifyOrderStatus(order, kind) {
 }
 
 async function savePushDevice(userId, body) {
-  const platform = body.platform === 'ios' ? 'ios' : 'web';
+  const platform =
+    body.platform === 'ios' ? 'ios' : body.platform === 'android' ? 'android' : 'web';
+  if (platform === 'android') {
+    const token = String(body.token || '').trim();
+    if (token.length < 20 || /\s/.test(token)) {
+      const error = new Error('Token de Android inválido');
+      error.status = 400;
+      throw error;
+    }
+    return PushDevice.findOneAndUpdate(
+      { platform: 'android', token },
+      { userId, platform: 'android', token, subscription: undefined },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  }
   if (platform === 'ios') {
     const raw = String(body.token || '').trim();
     const token = isApnsToken(raw.toLowerCase()) ? raw.toLowerCase() : raw;

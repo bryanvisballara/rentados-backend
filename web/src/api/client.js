@@ -8,8 +8,7 @@ import {
   refreshSession,
 } from './authSession';
 import { getTenantHeaders } from './tenantContext';
-
-const API_BASE = '/api/v1';
+import { API_BASE } from './apiBase';
 
 function buildQueryString(params = {}) {
   const entries = Object.entries(params).filter(
@@ -143,7 +142,17 @@ export { formatDate, formatDateTime, formatTime } from '../utils/dateTime';
 
 export const adminApi = {
   context: () => api('/admin/context'),
+  buildingAdmins: () => api('/admin/building-admins'),
+  createBuildingAdmin: (body) => api('/admin/building-admins', { method: 'POST', body }),
   dashboard: () => api('/admin/dashboard'),
+  building: {
+    update: (body) => api('/admin/building', { method: 'PATCH', body }),
+    uploadHero: (file) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return apiForm('/admin/building/upload-hero', formData);
+    },
+  },
   towers: {
     list: () => api('/admin/towers'),
     create: (body) => api('/admin/towers', { method: 'POST', body }),
@@ -211,6 +220,14 @@ export const adminApi = {
   billing: {
     getSettings: () => api('/admin/billing-settings'),
     updateSettings: (body) => api('/admin/billing-settings', { method: 'PATCH', body }),
+  },
+  accounting: {
+    get: () => api('/admin/accounting'),
+    connect: (body) => api('/admin/accounting/connect', { method: 'POST', body }),
+    saveSettings: (body) => api('/admin/accounting/settings', { method: 'PATCH', body }),
+    sync: (body) => api('/admin/accounting/sync', { method: 'POST', body }),
+    exportPeriod: (period) => api(`/admin/accounting/export?period=${encodeURIComponent(period)}`),
+    disconnect: () => api('/admin/accounting', { method: 'DELETE' }),
   },
   contactSettings: {
     get: () => api('/admin/contact-settings'),
@@ -284,13 +301,35 @@ export const porteriaApi = {
   notifications: {
     send: (body) => api('/porteria/notifications', { method: 'POST', body }),
   },
+  facilities: {
+    list: () => api('/porteria/facilities'),
+  },
+  facilityBookings: {
+    list: (params = {}) => {
+      const q = buildQueryString(params);
+      return api(`/porteria/facility-bookings${q ? `?${q}` : ''}`);
+    },
+  },
 };
 
 export const residentApi = {
+  deleteAccount: () => api('/auth/account', { method: 'DELETE' }),
+  appSections: () => api('/resident/app-sections'),
+  pushPublicKey: () => api('/resident/push/public-key'),
+  registerPushDevice: (body) => api('/resident/push-devices', { method: 'POST', body }),
   home: () => api('/resident/home'),
   publications: () => api('/resident/publications'),
   providers: () => api('/resident/providers'),
   restaurants: () => api('/resident/restaurants'),
+  restaurant: (id) => api(`/resident/restaurants/${id}`),
+  checkoutRestaurant: (id, body) =>
+    api(`/resident/restaurants/${id}/checkout`, { method: 'POST', body }),
+  deliveryProfile: () => api('/resident/delivery-profile'),
+  paymentMethods: () => api('/resident/payment-methods'),
+  addPaymentMethod: (body) => api('/resident/payment-methods', { method: 'POST', body }),
+  removePaymentMethod: (id) => api(`/resident/payment-methods/${id}`, { method: 'DELETE' }),
+  cardPayment: (id) => api(`/resident/card-payments/${id}`),
+  payAdministration: (body) => api('/resident/billing/pay', { method: 'POST', body }),
   createVisitorRequest: (body) => api('/resident/visitor-requests', { method: 'POST', body }),
   billing: () => api('/resident/billing'),
   services: () => api('/resident/services'),
@@ -307,6 +346,7 @@ export const residentApi = {
       return api(`/resident/facility-bookings${q ? `?${q}` : ''}`);
     },
     create: (body) => api('/resident/facility-bookings', { method: 'POST', body }),
+    checkout: (id) => api(`/resident/facility-bookings/${id}/checkout`, { method: 'POST' }),
     remove: (id) => api(`/resident/facility-bookings/${id}`, { method: 'DELETE' }),
   },
   utilities: {
@@ -339,6 +379,9 @@ export const residentApi = {
 };
 
 export const platformApi = {
+  residentApp: () => api('/platform/resident-app'),
+  updateResidentApp: (sections) =>
+    api('/platform/resident-app', { method: 'PATCH', body: { sections } }),
   dashboard: () => api('/platform/dashboard'),
   overview: () => api('/platform/overview'),
   conjuntosEngagement: () => api('/platform/conjuntos/engagement'),
@@ -364,22 +407,34 @@ export const platformApi = {
     api(`/platform/service-categories/${id}`, { method: 'PATCH', body }),
   removeServiceCategory: (id) =>
     api(`/platform/service-categories/${id}`, { method: 'DELETE' }),
-  providerApplications: (params = {}) => {
-    const q = buildQueryString(params);
-    return api(`/platform/provider-applications${q ? `?${q}` : ''}`);
+  homeServices: {
+    list: () => api('/platform/home-services'),
+    create: (body) => api('/platform/home-services', { method: 'POST', body }),
+    reorder: (orderedIds) =>
+      api('/platform/home-services/reorder', { method: 'PATCH', body: { orderedIds } }),
+    get: (id) => api(`/platform/home-services/${id}`),
+    update: (id, body) => api(`/platform/home-services/${id}`, { method: 'PATCH', body }),
+    uploadImage: (id, file) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return apiForm(`/platform/home-services/${id}/upload-image`, formData);
+    },
+    createMember: (serviceId, body) =>
+      api(`/platform/home-services/${serviceId}/members`, { method: 'POST', body }),
+    updateMember: (serviceId, memberId, body) =>
+      api(`/platform/home-services/${serviceId}/members/${memberId}`, { method: 'PATCH', body }),
+    removeMember: (serviceId, memberId) =>
+      api(`/platform/home-services/${serviceId}/members/${memberId}`, { method: 'DELETE' }),
+    uploadMemberMedia: (serviceId, memberId, file) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return apiForm(`/platform/home-services/${serviceId}/members/${memberId}/media`, formData);
+    },
+    removeMemberMedia: (serviceId, memberId, mediaId) =>
+      api(`/platform/home-services/${serviceId}/members/${memberId}/media/${mediaId}`, {
+        method: 'DELETE',
+      }),
   },
-  providers: () => api('/platform/providers'),
-  updateProvider: (id, body) => api(`/platform/providers/${id}`, { method: 'PATCH', body }),
-  approveProvider: (id) => api(`/platform/providers/${id}/approve`, { method: 'POST' }),
-  rejectProvider: (id, body) => api(`/platform/providers/${id}/reject`, { method: 'POST', body }),
-  removeProvider: (id) => api(`/platform/providers/${id}`, { method: 'DELETE' }),
-  createInterview: (providerId, body) =>
-    api(`/platform/providers/${providerId}/interviews`, { method: 'POST', body }),
-  interviews: (params = {}) => {
-    const q = buildQueryString(params);
-    return api(`/platform/interviews${q ? `?${q}` : ''}`);
-  },
-  updateInterview: (id, body) => api(`/platform/interviews/${id}`, { method: 'PATCH', body }),
   publications: () => api('/platform/publications'),
   createPublication: (body) => api('/platform/publications', { method: 'POST', body }),
   updatePublication: (id, body) => api(`/platform/publications/${id}`, { method: 'PATCH', body }),

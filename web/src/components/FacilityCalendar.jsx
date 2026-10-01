@@ -3,7 +3,9 @@ import {
   buildOpenHourSlots,
   eventGridPosition,
   formatHourLabel,
+  formatMinutesAsTime,
   getEventColumnDay,
+  resolveFacilityCalendarOpenHours,
   slotToDate,
 } from '../utils/openHours';
 import './FacilityCalendar.css';
@@ -28,12 +30,21 @@ export function addDays(date, days) {
 
 export default function FacilityCalendar({
   weekStart,
-  openHours = { start: '08:00', end: '22:00' },
+  openHours: openHoursProp,
+  facility,
   events = [],
   onSelectSlot,
   onSelectEvent,
   slotMinutes = 60,
 }) {
+  const openHours =
+    resolveFacilityCalendarOpenHours(facility) ||
+    (openHoursProp?.start && openHoursProp?.end ? openHoursProp : null);
+
+  if (!openHours) {
+    return <p className="facility-cal__empty">Cargando horario del servicio…</p>;
+  }
+
   const grid = buildOpenHourSlots(openHours);
   const { slots } = grid;
   const totalHeight = slots.length * HOUR_HEIGHT;
@@ -84,7 +95,9 @@ export default function FacilityCalendar({
         <div className="facility-cal__times" style={{ height: totalHeight }}>
           {slots.map((slot) => (
             <div key={slot.key} className="facility-cal__time-label">
-              {formatHourLabel(slot.hour)}
+              {slot.rowIndex === 0 && grid.startMin % 60 !== 0
+                ? formatMinutesAsTime(grid.startMin)
+                : formatHourLabel(slot.hour)}
             </div>
           ))}
         </div>
@@ -110,7 +123,7 @@ export default function FacilityCalendar({
                   <button
                     key={event.id}
                     type="button"
-                    className={`facility-cal__event facility-cal__event--${event.status || 'confirmed'}${event.isOwn ? ' facility-cal__event--own' : ''}`}
+                    className={`facility-cal__event facility-cal__event--${String(event.status || 'confirmed').replace(/_/g, '-')}${event.isOwn ? ' facility-cal__event--own' : ''}`}
                     style={{ top: style.top, height: style.height }}
                     onClick={() => onSelectEvent?.(event)}
                     title={event.title}

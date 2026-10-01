@@ -3,6 +3,7 @@
   grid-template-columns: 240px 1fr;
   min-height: 100vh;
   background: var(--color-bg, #f5f5f2);
+  padding-top: var(--safe-top);
 }
 
 .provider-sidebar {

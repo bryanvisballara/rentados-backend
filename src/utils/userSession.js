@@ -12,9 +12,9 @@ const ACTIVE_WINDOW_MS = 30 * 60 * 1000;
 const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
 function getSessionExpiryDate() {
-  const expiresIn = process.env.JWT_EXPIRES_IN || '30d';
+  const expiresIn = process.env.JWT_EXPIRES_IN || '3650d';
   const match = /^(\d+)([smhd])$/.exec(expiresIn);
-  if (!match) return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  if (!match) return new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000);
 
   const amount = Number(match[1]);
   const unit = match[2];

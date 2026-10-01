@@ -7,6 +7,10 @@ const {
   User,
 } = require('../models');
 const { buildRestaurantOrderNumber, formatRestaurantOrder } = require('./restaurantOrder');
+const { getBillingSettings, enrichPayment } = require('./billing');
+const {
+  settleAdministrationPayments,
+} = require('./administrationBalance');
 
 function digitsOnly(value) {
   return String(value || '').replace(/\D/g, '');
@@ -171,15 +175,38 @@ async function confirmCardPayment({ paymentId, amount, externalRef, approved = t
       err.status = 404;
       throw err;
     }
-    if (adminPayment.status !== 'paid') {
-      adminPayment.paidAmount = charge.amount;
+
+    const { Organization } = require('../models');
+    const org = await Organization.findById(adminPayment.organizationId);
+    const billingSettings = getBillingSettings(org);
+    const note = `tarjeta ${externalRef || charge._id}`.trim();
+    let settledPayments = [];
+
+    if (charge.payload?.settleOutstandingAdmin) {
+      settledPayments = await settleAdministrationPayments({
+        organizationId: adminPayment.organizationId,
+        unitId: adminPayment.unitId,
+        amount: charge.amount,
+        billingSettings,
+        notes: note,
+      });
+    } else if (adminPayment.status !== 'paid') {
+      const enriched = enrichPayment(adminPayment, billingSettings);
+      adminPayment.paidAmount = adminPayment.amount;
+      adminPayment.interestAmount = enriched.interestAmount || 0;
       adminPayment.status = 'paid';
       adminPayment.paidAt = new Date();
-      adminPayment.notes = `${adminPayment.notes || ''} · tarjeta ${externalRef || charge._id}`.trim();
+      adminPayment.notes = `${adminPayment.notes || ''} · ${note}`.trim();
       await adminPayment.save();
+      settledPayments = [adminPayment];
+      const { refreshUnitAdminStatus } = require('./administrationCharges');
+      await refreshUnitAdminStatus(adminPayment.unitId, adminPayment.organizationId);
+    }
+
+    if (settledPayments.length) {
       try {
         const { syncPaidPayments } = require('./accounting');
-        await syncPaidPayments([adminPayment]);
+        await syncPaidPayments(settledPayments);
       } catch (err) {
         console.error('No se pudo enviar el pago al software contable:', err.message);
       }

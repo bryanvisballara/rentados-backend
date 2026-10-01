@@ -8,7 +8,7 @@ const pushDeviceSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    platform: { type: String, enum: ['ios', 'web'], required: true },
+    platform: { type: String, enum: ['ios', 'android', 'web'], required: true },
     token: { type: String, required: true, trim: true },
     subscription: { type: mongoose.Schema.Types.Mixed },
   },

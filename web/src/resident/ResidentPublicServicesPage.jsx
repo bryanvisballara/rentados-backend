@@ -1,32 +1,39 @@
 import { useEffect, useState } from 'react';
-import { formatCop, formatDate, residentApi } from '../api/client';
+import { residentApi } from '../api/client';
 import './ResidentLayout.css';
 
-function money(amount) {
-  return formatCop(amount ?? 0);
+const TYPE_LABELS = {
+  energy: 'Energía eléctrica',
+  water: 'Agua',
+  gas: 'Gas',
+  internet: 'Internet',
+  phone: 'Telefonía',
+};
+
+function providerId(provider) {
+  return String(provider?.id || provider?._id || '');
 }
 
-function StatusBadge({ status }) {
-  if (!status) return null;
-  return (
-    <span className={`resident-util-badge resident-util-badge--${status.tone || 'neutral'}`}>
-      {status.label}
-    </span>
+function accountForProvider(accounts, provider) {
+  const id = providerId(provider);
+  return (accounts || []).find(
+    (account) => account.isActive !== false && providerId(account.provider) === id
   );
 }
 
 export default function ResidentPublicServicesPage() {
   const [overview, setOverview] = useState(null);
-  const [view, setView] = useState('home'); // home | providers | link | detail | history | guide
+  const [view, setView] = useState('home');
   const [selectedType, setSelectedType] = useState(null);
   const [providers, setProviders] = useState([]);
-  const [selectedProvider, setSelectedProvider] = useState(null);
+  const [provider, setProvider] = useState(null);
   const [accountCode, setAccountCode] = useState('');
-  const [detail, setDetail] = useState(null);
-  const [gmail, setGmail] = useState(null);
+  const [savedAccount, setSavedAccount] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   async function loadOverview() {
     const data = await residentApi.utilities.overview();
@@ -34,73 +41,37 @@ export default function ResidentPublicServicesPage() {
     return data;
   }
 
-  async function loadGmail() {
-    const data = await residentApi.utilities.gmailStatus();
-    setGmail(data.gmail);
-    return data;
-  }
-
   useEffect(() => {
     document.title = 'Centro de Facturas · Rentados';
-    Promise.all([loadOverview(), loadGmail()]).catch((err) => setError(err.message));
-
-    const params = new URLSearchParams(window.location.search);
-    const gmailParam = params.get('gmail');
-    if (gmailParam === 'connected') {
-      setSuccess('Gmail conectado. El Centro Inteligente de Facturas buscará recibos nuevos.');
-      loadGmail()
-        .then(() => residentApi.utilities.gmailSync())
-        .then(async (result) => {
-          setGmail(result.connection);
-          await loadOverview();
-          if (result.summary?.created > 0) {
-            setSuccess(
-              `Sincronizado: ${result.summary.created} factura(s) nueva(s)${
-                result.summary.imported?.length
-                  ? ` (${result.summary.imported.join(', ')})`
-                  : ''
-              }.`
-            );
-          }
-        })
-        .catch((err) => setError(err.message))
-        .finally(() => {
-          window.history.replaceState({}, '', window.location.pathname);
-        });
-    } else if (gmailParam === 'error') {
-      setError(params.get('message') || 'No se pudo conectar Gmail');
-      window.history.replaceState({}, '', window.location.pathname);
-    }
+    loadOverview().catch((err) => setError(err.message));
   }, []);
 
-  async function openAccountDetail(accountId) {
-    setBusy(true);
-    setError('');
-    try {
-      const data = await residentApi.utilities.accountDetail(accountId);
-      setDetail(data);
-      setView('detail');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const accounts = overview?.accounts || [];
+  const serviceTypes = overview?.serviceTypes || [];
+  const city = overview?.city || 'tu ciudad';
 
-  async function openServiceType(serviceType) {
+  function goHome() {
+    setView('home');
+    setSelectedType(null);
+    setProvider(null);
     setError('');
     setSuccess('');
-    setSelectedType(serviceType);
+  }
+
+  function goProviders() {
+    setView('providers');
+    setProvider(null);
+    setError('');
+    setSuccess('');
+  }
+
+  async function openType(type) {
+    setError('');
+    setSuccess('');
+    setSelectedType(type);
     setBusy(true);
     try {
-      const linked = (overview?.accounts || []).find(
-        (a) => a.serviceType === serviceType.key && a.isActive !== false
-      );
-      if (linked?.id) {
-        await openAccountDetail(linked.id);
-        return;
-      }
-      const data = await residentApi.utilities.providers({ serviceType: serviceType.key });
+      const data = await residentApi.utilities.providers({ serviceType: type.key });
       setProviders(data.providers || []);
       setView('providers');
     } catch (err) {
@@ -110,202 +81,97 @@ export default function ResidentPublicServicesPage() {
     }
   }
 
-  function startLink(provider) {
-    setSelectedProvider(provider);
-    setAccountCode('');
-    setView('link');
+  function openProvider(item, sourceAccounts = accounts) {
+    const existing = accountForProvider(sourceAccounts, item);
+    setProvider(item);
+    setAccountCode(existing?.accountCode || '');
+    setSavedAccount(existing || null);
+    setEditing(false);
+    setView('provider');
     setError('');
     setSuccess('');
   }
 
-  async function submitLink(e) {
-    e.preventDefault();
-    if (!selectedProvider) return;
+  async function saveCode(event) {
+    event.preventDefault();
+    if (!provider) return;
     setBusy(true);
     setError('');
     setSuccess('');
     try {
       const result = await residentApi.utilities.linkAccount({
-        providerId: selectedProvider.id,
-        accountCode: accountCode.trim(),
-        accountCodeType: selectedProvider.accountCodeLabel,
+        providerId: provider.id,
+        accountCode,
       });
-      setSuccess(
-        `${selectedProvider.name} vinculado. Tu ${selectedProvider.accountCodeLabel || 'código'} quedó guardado.`
-      );
-      await loadOverview();
-      if (result?.account?.id) {
-        await openAccountDetail(result.account.id);
-      } else {
-        setView('home');
+      const account = result.account;
+      setSavedAccount(account);
+      setAccountCode(account.accountCode || accountCode);
+      setEditing(false);
+      const data = await loadOverview();
+      setSuccess('Dato guardado. Queda asociado a tu unidad.');
+      if (account?.provider) {
+        setProvider((current) => ({ ...current, ...account.provider, id: account.provider.id || current?.id }));
       }
-      setSelectedProvider(null);
+      return data;
     } catch (err) {
       setError(err.message);
+      return null;
     } finally {
       setBusy(false);
     }
   }
 
-  async function unlinkAccount(accountId) {
-    if (!window.confirm('¿Desvincular este servicio? Podrás volver a registrarlo después.')) return;
-    setBusy(true);
+  async function copyCode() {
+    const value = String(savedAccount?.accountCode || accountCode || '').trim();
+    if (!value) return;
+    let copiedOk = false;
     try {
-      await residentApi.utilities.unlinkAccount(accountId);
-      await loadOverview();
-      setDetail(null);
-      setView('home');
-      setSuccess('Servicio desvinculado.');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function payBill(bill) {
-    setBusy(true);
-    setError('');
-    try {
-      const data = await residentApi.utilities.openPayment(bill.id);
-      if (data.paymentUrl) {
-        window.open(data.paymentUrl, '_blank', 'noopener,noreferrer');
+      await navigator.clipboard.writeText(value);
+      copiedOk = true;
+    } catch {
+      try {
+        const area = document.createElement('textarea');
+        area.value = value;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        document.body.appendChild(area);
+        area.select();
+        copiedOk = document.execCommand('copy');
+        area.remove();
+      } catch {
+        copiedOk = false;
       }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
     }
-  }
-
-  async function openProviderPortal(accountId) {
-    setBusy(true);
-    setError('');
-    try {
-      const data = await residentApi.utilities.openPortal(accountId);
-      if (data.paymentUrl) {
-        window.open(data.paymentUrl, '_blank', 'noopener,noreferrer');
-      }
-      // No mostrar “conecta Gmail” como éxito si ya está conectado; el hint va en el detalle.
-      if (data.message && !data.canAutoFetch && !gmail?.connected) {
-        setSuccess(data.message);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function markPaid(bill) {
-    if (!window.confirm('¿Confirmas que ya pagaste esta factura en el portal del proveedor?')) return;
-    setBusy(true);
-    try {
-      await residentApi.utilities.markPaid(bill.id);
-      await loadOverview();
-      if (detail?.account?.id) await openAccountDetail(detail.account.id);
-      setSuccess('Pago registrado en tu historial de servicios públicos.');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function connectGmail() {
-    setBusy(true);
-    setError('');
-    try {
-      const data = await residentApi.utilities.gmailConnect();
-      if (data.authUrl) {
-        window.location.href = data.authUrl;
-        return;
-      }
-      setError('No se pudo iniciar la conexión con Gmail');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function syncGmail(force = false) {
-    setBusy(true);
-    setError('');
-    try {
-      const result = await residentApi.utilities.gmailSync(force ? { force: true } : {});
-      setGmail(result.connection);
-      await loadOverview();
-      if (view === 'detail' && detail?.account?.id) {
-        await openAccountDetail(detail.account.id);
-      }
-      const created = result.summary?.created || 0;
-      const scanned = result.summary?.scanned || 0;
-      const errors = result.summary?.errors || [];
-      if (created > 0) {
-        setSuccess(
-          `Centro de Facturas: ${created} nueva(s)${
-            result.summary?.imported?.length ? ` · ${result.summary.imported.join(', ')}` : ''
-          } (revisados ${scanned} correos).`
-        );
-      } else if (errors.length) {
-        const sample = errors
-          .slice(0, 3)
-          .map((e) => e.reason)
-          .join(' · ');
-        setSuccess(
-          `Revisamos ${scanned} correo(s) y no importamos facturas nuevas. Motivo: ${sample}`
-        );
-      } else {
-        setSuccess(
-          `Revisamos ${scanned} correo(s) y no encontramos facturas nuevas. Si el correo está en Gmail, pulsa “Reintentar importación”.`
-        );
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function disconnectGmail() {
-    if (!window.confirm('¿Desconectar Gmail? Dejaremos de buscar facturas nuevas en tu correo.')) {
+    if (!copiedOk) {
+      setError('No se pudo copiar el código.');
       return;
     }
-    setBusy(true);
-    try {
-      const data = await residentApi.utilities.gmailDisconnect();
-      setGmail(data.gmail);
-      setSuccess('Gmail desconectado.');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function goHome() {
-    setView('home');
-    setSelectedType(null);
-    setSelectedProvider(null);
-    setDetail(null);
     setError('');
+    setCopied(true);
+    setSuccess('Código copiado al portapapeles.');
+    window.setTimeout(() => setCopied(false), 2000);
   }
 
-  const accounts = overview?.accounts || [];
-  const pendingBills = overview?.pendingBills || [];
-  const payments = overview?.payments || [];
-  const serviceTypes = overview?.serviceTypes || [];
-  const city = overview?.city || '';
+  function pay() {
+    const url = provider?.paymentUrl || savedAccount?.provider?.paymentUrl;
+    if (!url) {
+      setError('Este prestador aún no tiene página de pagos.');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  const typeLabel = selectedType ? TYPE_LABELS[selectedType.key] || selectedType.label : '';
+  const codeLabel = provider?.accountCodeLabel || 'Código de cobro';
+  const storedCode = savedAccount?.accountCode || '';
 
   return (
     <div className="resident-page">
       <header className="resident-page__header">
         <h1 className="resident-page__title">Centro de Facturas</h1>
         <p className="resident-page__subtitle">
-          {city
-            ? `Vincula tus códigos en ${city} y conecta Gmail: Rentados detecta facturas nuevas, guarda el PDF y te avisa.`
-            : 'Vincula tus proveedores, conecta Gmail y recibe avisos inteligentes de facturas.'}
+          Guarda el dato de cobro de cada servicio en {city} y paga directo en la página de la empresa.
         </p>
       </header>
 
@@ -314,524 +180,130 @@ export default function ResidentPublicServicesPage() {
         {success && <div className="resident-success">{success}</div>}
 
         {view !== 'home' && (
-          <button type="button" className="resident-util-back" onClick={goHome}>
+          <button type="button" className="resident-util-back" onClick={view === 'provider' ? goProviders : goHome}>
             ← Volver
           </button>
         )}
 
         {view === 'home' && overview && (
-          <>
-            <section className="resident-card" style={{ marginBottom: '1rem' }}>
-              <h2 className="resident-util-section-title">Centro Inteligente de Facturas</h2>
-              <p className="resident-util-meta" style={{ marginBottom: '0.75rem' }}>
-                Una sola conexión de Gmail para detectar facturas de Air-e, Gases del Caribe, Triple
-                A, Claro, Movistar, Tigo y más. Extraemos el PDF, leemos el valor y te notificamos.
-                {gmail?.aiConfigured
-                  ? ' Análisis con IA activo.'
-                  : ' Parsers + lectura de PDF activos (activa OPENAI_API_KEY para IA completa).'}
-                {gmail?.pushEnabled ? ' Push casi en tiempo real activo.' : ''}
-              </p>
-              {gmail?.connected ? (
-                <>
-                  <p className="resident-util-meta">
-                    Conectado: <strong>{gmail.googleEmail || 'Gmail'}</strong>
-                    {gmail.lastSyncAt ? ` · Última sync ${formatDate(gmail.lastSyncAt)}` : ''}
-                    {gmail.pushEnabled ? ' · Push activo' : ''}
-                  </p>
-                  <div className="resident-util-form" style={{ marginTop: '0.75rem' }}>
-                    <button type="button" disabled={busy} onClick={() => syncGmail(false)}>
-                      {busy ? 'Analizando correo…' : 'Buscar facturas ahora'}
-                    </button>
-                    <button
-                      type="button"
-                      className="resident-util-btn-secondary"
-                      disabled={busy}
-                      onClick={() => syncGmail(true)}
-                    >
-                      Reintentar importación
-                    </button>
-                    <button
-                      type="button"
-                      className="resident-util-btn-secondary"
-                      disabled={busy}
-                      onClick={disconnectGmail}
-                    >
-                      Desconectar Gmail
-                    </button>
-                    <button
-                      type="button"
-                      className="resident-util-btn-secondary"
-                      onClick={() => setView('guide')}
-                    >
-                      ¿No te llegan correos de factura?
-                    </button>
-                  </div>
-                  {gmail.lastSyncSummary?.errors?.length > 0 && (
-                    <ul className="resident-util-meta" style={{ marginTop: '0.75rem' }}>
-                      {gmail.lastSyncSummary.errors.slice(0, 5).map((item, idx) => (
-                        <li key={`${item.messageId || idx}-${item.reason}`}>
-                          {item.reason}
-                          {item.subject ? ` · ${item.subject}` : ''}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {gmail.lastSyncError && !gmail.lastSyncSummary?.errors?.length && (
-                    <p className="resident-util-hint" style={{ marginTop: '0.5rem' }}>
-                      Último detalle: {gmail.lastSyncError}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <div className="resident-util-form">
-                  <button type="button" disabled={busy} onClick={connectGmail}>
-                    Conectar Gmail
-                  </button>
-                  <button
-                    type="button"
-                    className="resident-util-btn-secondary"
-                    onClick={() => setView('guide')}
-                  >
-                    Guía: activar factura por correo
-                  </button>
-                  {gmail && gmail.configured === false && (
-                    <p className="resident-util-hint">
-                      El administrador aún debe configurar las credenciales de Google en el servidor.
-                    </p>
-                  )}
-                </div>
-              )}
-            </section>
-
-            {pendingBills.length > 0 && (
-              <section className="resident-card" style={{ marginBottom: '1rem' }}>
-                <h2 className="resident-util-section-title">Facturas por pagar</h2>
-                {pendingBills.map((bill) => (
-                  <div key={bill.id} className="resident-payment">
-                    <div>
-                      <strong>{bill.provider?.name || bill.serviceTypeLabel}</strong>
-                      <p className="resident-util-meta">
-                        {bill.period || 'Factura'}
-                        {bill.dueDate ? ` · Vence ${formatDate(bill.dueDate)}` : ''}
-                      </p>
-                      <StatusBadge
-                        status={
-                          bill.status === 'overdue'
-                            ? { label: 'En mora', tone: 'danger' }
-                            : { label: 'A tiempo', tone: 'warning' }
-                        }
-                      />
-                    </div>
-                    <div className="resident-util-actions">
-                      <strong>{money(bill.amount)}</strong>
-                      <button type="button" disabled={busy} onClick={() => payBill(bill)}>
-                        Pagar
-                      </button>
-                      {bill.documentUrl && (
-                        <a
-                          className="resident-util-btn-secondary resident-util-link-btn"
-                          href={bill.documentUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          Ver PDF
-                        </a>
-                      )}
-                      <button
-                        type="button"
-                        className="resident-util-btn-secondary"
-                        disabled={busy}
-                        onClick={() => markPaid(bill)}
-                      >
-                        Ya pagué
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </section>
-            )}
-
-            {accounts.length > 0 && (
-              <section className="resident-card" style={{ marginBottom: '1rem' }}>
-                <h2 className="resident-util-section-title">Mis servicios vinculados</h2>
-                {accounts.map((account) => (
-                  <button
-                    key={account.id}
-                    type="button"
-                    className="resident-util-account-row"
-                    onClick={() => openAccountDetail(account.id)}
-                  >
-                    <div>
-                      <div className="resident-util-account-row__title">
-                        <strong>{account.provider?.name || account.serviceTypeLabel}</strong>
-                        <StatusBadge status={account.status} />
-                      </div>
-                      <p className="resident-util-meta">
-                        {account.serviceTypeLabel} · {account.accountCodeType || 'Código'}{' '}
-                        {account.accountCode}
-                        {account.amountDue > 0 ? ` · ${money(account.amountDue)}` : ''}
-                      </p>
-                    </div>
-                    <span aria-hidden>›</span>
-                  </button>
-                ))}
-              </section>
-            )}
-
-            <div className="resident-util-grid">
-              {serviceTypes.map((type) => {
-                const linked = accounts.find((a) => a.serviceType === type.key);
-                return (
-                  <button
-                    key={type.key}
-                    type="button"
-                    className="resident-util-card"
-                    disabled={busy}
-                    onClick={() => openServiceType(type)}
-                  >
-                    <div>
-                      <div className="resident-util-account-row__title">
-                        <strong>{type.label}</strong>
-                        {linked?.status && <StatusBadge status={linked.status} />}
-                      </div>
-                      <span>
-                        {linked
-                          ? `${linked.provider?.name || 'Vinculado'} · ${linked.accountCode}${
-                              linked.amountDue > 0 ? ` · ${money(linked.amountDue)}` : ''
-                            }`
-                          : city
-                            ? `Elegir proveedor en ${city}`
-                            : 'Registrar proveedor'}
-                      </span>
-                    </div>
-                    <span aria-hidden>›</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              type="button"
-              className="resident-util-history-btn"
-              onClick={() => setView('history')}
-            >
-              Historial de pagos de servicios públicos
-            </button>
-          </>
-        )}
-
-        {view === 'detail' && detail?.account && (
-          <section className="resident-card">
-            <div className="resident-util-account-row__title" style={{ marginBottom: '0.5rem' }}>
-              <h2 className="resident-util-section-title" style={{ margin: 0 }}>
-                {detail.account.provider?.name || detail.account.serviceTypeLabel}
-              </h2>
-              <StatusBadge status={detail.account.status} />
-            </div>
-            <p className="resident-util-meta" style={{ marginBottom: '1rem' }}>
-              {detail.account.serviceTypeLabel} · {detail.account.accountCodeType || 'Código'}{' '}
-              {detail.account.accountCode}
-            </p>
-
-            <div className="resident-util-amount-box">
-              <p>Valor a pagar</p>
-              <strong>
-                {detail.account.amountDue > 0 ? money(detail.account.amountDue) : money(0)}
-              </strong>
-              <span>
-                {detail.account.status?.key === 'unknown'
-                  ? 'Aún no hemos importado una factura de este servicio.'
-                  : detail.account.status?.key === 'current'
-                    ? 'No tienes facturas pendientes registradas.'
-                    : detail.account.latestBill?.dueDate
-                      ? `Vence ${formatDate(detail.account.latestBill.dueDate)}`
-                      : 'Factura pendiente'}
-              </span>
-            </div>
-
-            {(detail.openBills || []).map((bill) => (
-              <div key={bill.id} className="resident-payment">
-                <div>
-                  <strong>{bill.period || 'Factura actual'}</strong>
-                  <p className="resident-util-meta">
-                    {bill.dueDate ? `Vence ${formatDate(bill.dueDate)}` : 'Sin fecha de vencimiento'}
-                  </p>
-                  <StatusBadge
-                    status={
-                      bill.status === 'overdue'
-                        ? { label: 'En mora', tone: 'danger' }
-                        : { label: 'A tiempo', tone: 'warning' }
-                    }
-                  />
-                </div>
-                <div className="resident-util-actions">
-                  <strong>{money(bill.amount)}</strong>
-                  <button type="button" disabled={busy} onClick={() => payBill(bill)}>
-                    Pagar en portal
-                  </button>
-                  {bill.documentUrl && (
-                    <a
-                      className="resident-util-btn-secondary resident-util-link-btn"
-                      href={bill.documentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      download={bill.documentFileName || 'factura.pdf'}
-                    >
-                      Descargar PDF
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    className="resident-util-btn-secondary"
-                    disabled={busy}
-                    onClick={() => markPaid(bill)}
-                  >
-                    Ya pagué
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            <div className="resident-util-form" style={{ marginTop: '1rem' }}>
-              {(gmail?.connected || detail.gmail?.connected || detail.lookup?.gmailConnected) && (
-                <button type="button" disabled={busy} onClick={() => syncGmail(true)}>
-                  {busy ? 'Buscando en Gmail…' : 'Buscar factura en Gmail'}
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => openProviderPortal(detail.account.id)}
-              >
-                Consultar / pagar en {detail.account.provider?.name || 'el proveedor'}
-              </button>
-              <button
-                type="button"
-                className="resident-util-btn-secondary"
-                disabled={busy}
-                onClick={() => {
-                  setSelectedProvider(detail.account.provider);
-                  setAccountCode(detail.account.accountCode || '');
-                  setSelectedType({
-                    key: detail.account.serviceType,
-                    label: detail.account.serviceTypeLabel,
-                  });
-                  setView('link');
-                }}
-              >
-                Editar {detail.account.accountCodeType || 'código'}
-              </button>
-              <button
-                type="button"
-                className="resident-util-btn-secondary"
-                disabled={busy}
-                onClick={() => unlinkAccount(detail.account.id)}
-              >
-                Desvincular
-              </button>
-            </div>
-
-            {detail.lookup?.message && (
-              <p className="resident-util-hint">{detail.lookup.message}</p>
-            )}
-            {!gmail?.connected && !detail.gmail?.connected && !detail.lookup?.gmailConnected && (
-              <div className="resident-util-form" style={{ marginTop: '0.75rem' }}>
-                <button type="button" disabled={busy} onClick={connectGmail}>
-                  Conectar Gmail
-                </button>
-              </div>
-            )}
-          </section>
-        )}
-
-        {view === 'providers' && selectedType && (
-          <section className="resident-card">
-            <h2 className="resident-util-section-title">{selectedType.label}</h2>
-            <p className="resident-util-meta" style={{ marginBottom: '0.75rem' }}>
-              Proveedores disponibles{city ? ` en ${city}` : ''}. Elige el tuyo.
-            </p>
-            {providers.length === 0 ? (
-              <p className="resident-empty">
-                Aún no hay proveedores configurados para esta ciudad. Contacta a soporte Rentados.
-              </p>
-            ) : (
-              <div className="resident-util-grid">
-                {providers.map((provider) => (
-                  <button
-                    key={provider.id}
-                    type="button"
-                    className="resident-util-card"
-                    onClick={() => startLink(provider)}
-                  >
-                    <div>
-                      <strong>{provider.name}</strong>
-                      <span>{provider.accountCodeLabel || 'Código'}</span>
-                    </div>
-                    <span aria-hidden>›</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {view === 'link' && selectedProvider && (
-          <section className="resident-card">
-            <h2 className="resident-util-section-title">{selectedProvider.name}</h2>
-            <p className="resident-util-meta" style={{ marginBottom: '0.75rem' }}>
-              {selectedProvider.accountCodeHelp ||
-                `Ingresa tu ${selectedProvider.accountCodeLabel || 'código'} con el proveedor. Se guardará para no volver a digitarlo.`}
-            </p>
-            <form className="resident-util-form" onSubmit={submitLink}>
-              <label>
-                {selectedProvider.accountCodeLabel || 'Código'}
-                <input
-                  value={accountCode}
-                  onChange={(e) => setAccountCode(e.target.value)}
-                  placeholder={
-                    selectedProvider.slug === 'aire-energia' ? 'Ej. 7945070' : 'Tu código'
-                  }
-                  required
-                  autoComplete="off"
-                />
-              </label>
-              <button type="submit" disabled={busy || !accountCode.trim()}>
-                {busy ? 'Guardando…' : 'Guardar y vincular'}
-              </button>
-              {selectedType && (
+          <div className="resident-util-grid">
+            {serviceTypes.map((type) => {
+              const linked = accounts.filter((account) => account.serviceType === type.key);
+              const label = TYPE_LABELS[type.key] || type.label;
+              return (
                 <button
+                  key={type.key}
                   type="button"
-                  className="resident-util-btn-secondary"
-                  onClick={async () => {
-                    setBusy(true);
-                    try {
-                      const data = await residentApi.utilities.providers({
-                        serviceType: selectedType.key,
-                      });
-                      setProviders(data.providers || []);
-                      setSelectedProvider(null);
-                      setView('providers');
-                    } catch (err) {
-                      setError(err.message);
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
+                  className="resident-util-card"
+                  disabled={busy}
+                  onClick={() => openType(type)}
                 >
-                  Cambiar de proveedor
-                </button>
-              )}
-            </form>
-          </section>
-        )}
-
-        {view === 'guide' && (
-          <section className="resident-card">
-            <h2 className="resident-util-section-title">Guía del Centro de Facturas</h2>
-            <p className="resident-util-meta" style={{ marginBottom: '1rem' }}>
-              El truco no es una API por empresa: es que cada proveedor te envíe la factura al mismo
-              Gmail. Luego Rentados la detecta sola.
-            </p>
-
-            <ol className="resident-util-guide" style={{ marginBottom: '1.25rem' }}>
-              <li>
-                <strong>Conecta Gmail</strong>
-                <span>Solo lectura. Rentados busca facturas nuevas y guarda el PDF.</span>
-              </li>
-              <li>
-                <strong>Vincula tu código por servicio</strong>
-                <span>
-                  NIC (Air-e), contrato (Gas/Triple A), cuenta o línea (Claro/Movistar/Tigo).
-                </span>
-              </li>
-              <li>
-                <strong>Activa factura digital en cada empresa</strong>
-                <span>Al mismo correo de Gmail. Usa los enlaces de abajo.</span>
-              </li>
-            </ol>
-
-            <h3 className="resident-util-section-title">Air-e (energía)</h3>
-            <div className="resident-util-guide__actions" style={{ marginBottom: '1rem' }}>
-              <a
-                href="https://www.air-e.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="resident-util-link-btn resident-util-btn-secondary"
-              >
-                Oficina virtual
-              </a>
-              <a
-                href="https://wa.me/573134300000"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="resident-util-link-btn resident-util-btn-secondary"
-              >
-                WhatsApp
-              </a>
-            </div>
-
-            <h3 className="resident-util-section-title">Gases del Caribe</h3>
-            <div className="resident-util-guide__actions" style={{ marginBottom: '1rem' }}>
-              <a
-                href="https://portal.gascaribe.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="resident-util-link-btn resident-util-btn-secondary"
-              >
-                Portal Gascaribe
-              </a>
-              <a
-                href="https://wa.me/576053227000"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="resident-util-link-btn resident-util-btn-secondary"
-              >
-                WhatsApp
-              </a>
-            </div>
-
-            <h3 className="resident-util-section-title">Triple A / Claro / Movistar / Tigo</h3>
-            <p className="resident-util-meta" style={{ marginBottom: '0.75rem' }}>
-              En la app o web de cada empresa busca “factura electrónica”, “factura al correo” o
-              “facturación digital” y registra el mismo Gmail. Luego vincula tu código aquí.
-            </p>
-
-            <div className="resident-util-form" style={{ marginTop: '1rem' }}>
-              <button type="button" disabled={busy || gmail?.connected} onClick={connectGmail}>
-                {gmail?.connected ? 'Gmail ya conectado' : 'Conectar Gmail ahora'}
-              </button>
-              <button type="button" className="resident-util-btn-secondary" onClick={goHome}>
-                Listo, volver
-              </button>
-            </div>
-          </section>
-        )}
-
-        {view === 'history' && (
-          <section className="resident-card">
-            <h2 className="resident-util-section-title">Historial de pagos</h2>
-            <p className="resident-util-meta" style={{ marginBottom: '0.75rem' }}>
-              Independiente de la administración del conjunto.
-            </p>
-            {payments.length === 0 ? (
-              <p className="resident-empty">Aún no hay pagos registrados.</p>
-            ) : (
-              payments.map((payment) => (
-                <div key={payment.id} className="resident-payment">
                   <div>
-                    <strong>{payment.provider?.name || payment.serviceTypeLabel}</strong>
-                    <p className="resident-util-meta">
-                      {payment.serviceTypeLabel} · {formatDate(payment.paidAt)}
-                    </p>
+                    <strong>{label}</strong>
+                    <span>
+                      {linked.length
+                        ? linked
+                            .map((account) => account.provider?.name)
+                            .filter(Boolean)
+                            .join(', ')
+                        : `Prestadores en ${city}`}
+                    </span>
                   </div>
-                  <strong>{money(payment.amount)}</strong>
-                </div>
-              ))
+                  <span aria-hidden>›</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {view === 'providers' && (
+          <section className="resident-card">
+            <h2 className="resident-util-section-title">{typeLabel}</h2>
+            <p className="resident-util-meta">Prestadores en {city}. Elige el tuyo para guardar el dato de cobro.</p>
+            {providers.length === 0 ? (
+              <p className="resident-util-hint">No hay prestadores de este servicio en {city}.</p>
+            ) : (
+              <div className="resident-util-grid" style={{ marginTop: '0.85rem' }}>
+                {providers.map((item) => {
+                  const saved = accountForProvider(accounts, item);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="resident-util-card"
+                      onClick={() => openProvider(item)}
+                    >
+                      <div>
+                        <div className="resident-util-account-row__title">
+                          <strong>{item.name}</strong>
+                          {saved && <span className="resident-util-badge resident-util-badge--success">Guardado</span>}
+                        </div>
+                        <span>{saved ? `${saved.accountCodeType || item.accountCodeLabel}: ${saved.accountCode}` : item.accountCodeLabel}</span>
+                      </div>
+                      <span aria-hidden>›</span>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </section>
         )}
 
-        {!overview && !error && <p className="resident-empty">Cargando servicios…</p>}
+        {view === 'provider' && provider && (
+          <section className="resident-card">
+            <h2 className="resident-util-section-title">{provider.name}</h2>
+            <p className="resident-util-meta">
+              {provider.accountCodeHelp || `Guarda tu ${codeLabel.toLowerCase()} para pagarlo cuando lo necesites.`}
+            </p>
+
+            {storedCode && !editing ? (
+              <div className="resident-util-saved">
+                <div>
+                  <span className="resident-util-meta">{codeLabel}</span>
+                  <p>{storedCode}</p>
+                </div>
+              </div>
+            ) : (
+              <form id="utility-code-form" className="resident-util-form" onSubmit={saveCode}>
+                <label htmlFor="utility-account-code">{codeLabel}</label>
+                <input
+                  id="utility-account-code"
+                  value={accountCode}
+                  onChange={(event) => setAccountCode(event.target.value)}
+                  placeholder={codeLabel}
+                  autoComplete="off"
+                  required
+                />
+              </form>
+            )}
+
+            {storedCode && !editing && (
+              <button type="button" className="resident-util-copy" onClick={copyCode}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <rect x="9" y="9" width="11" height="11" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                </svg>
+                {copied ? 'Copiado' : 'Copiar al portapapeles'}
+              </button>
+            )}
+
+            {storedCode && !editing ? (
+              <button type="button" className="resident-util-update" onClick={() => setEditing(true)}>
+                Actualizar dato
+              </button>
+            ) : (
+              <button type="submit" form="utility-code-form" className="resident-util-update" disabled={busy}>
+                {busy ? 'Guardando…' : storedCode ? 'Actualizar dato' : 'Guardar dato'}
+              </button>
+            )}
+
+            {provider.paymentUrl && (
+              <button type="button" className="resident-util-pay" onClick={pay}>
+                Pagar en {provider.name}
+              </button>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );

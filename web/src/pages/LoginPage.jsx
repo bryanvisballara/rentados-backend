@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Logo from '../components/Logo';
 import { LOGIN_PORTALS } from '../config/loginPortals';
 import { useAuth } from '../context/AuthContext';
@@ -12,11 +12,76 @@ const REDIRECTS = {
   resident: '/app',
   admin: '/admin',
   superadmin: '/super-admin',
-  provider: '/provider',
   porteria: '/porteria',
 };
 
 const RESIDENT_LOGIN_CTX_KEY = 'rentados_resident_login_ctx';
+
+const COUNTRY_FLAGS = {
+  Colombia: '🇨🇴',
+  México: '🇲🇽',
+  Mexico: '🇲🇽',
+};
+
+function FieldIcon({ children }) {
+  return (
+    <span className="login__field-icon" aria-hidden="true">
+      {children}
+    </span>
+  );
+}
+
+function IconBuilding() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 20V9l8-5 8 5v11" />
+      <path d="M9 20v-6h6v6" />
+      <path d="M4 20h16" />
+    </svg>
+  );
+}
+
+function IconMail() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <path d="m4 7 8 6 8-6" />
+    </svg>
+  );
+}
+
+function IconLock() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+function IconEye({ off = false }) {
+  return off ? (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3l18 18" />
+      <path d="M10.6 10.6A3 3 0 0 0 13.4 13.4" />
+      <path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c5.5 0 9.5 4.2 10.5 7-0.4 1.1-1.2 2.4-2.3 3.6" />
+      <path d="M6.1 6.1C4.2 7.5 2.8 9.4 1.5 12c1 2.8 5 7 10.5 7 1.6 0 3.1-.4 4.4-1" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function IconChevron() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
 
 function loadResidentLoginContext() {
   try {
@@ -38,6 +103,7 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
 
   const { loginSuccess } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,8 +128,15 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
   const [buildingsLoading, setBuildingsLoading] = useState(false);
   const [showCountryList, setShowCountryList] = useState(false);
   const [showBuildingList, setShowBuildingList] = useState(false);
+  const [showSplash, setShowSplash] = useState(isResidentPortal);
   const countryPickerRef = useRef(null);
   const buildingPickerRef = useRef(null);
+
+  useEffect(() => {
+    if (!isResidentPortal) return undefined;
+    const timer = window.setTimeout(() => setShowSplash(false), 1000);
+    return () => window.clearTimeout(timer);
+  }, [isResidentPortal]);
 
   useEffect(() => {
     if (!isResidentPortal) return undefined;
@@ -151,6 +224,12 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
     e.preventDefault();
     setError('');
 
+    const formData = new FormData(e.currentTarget);
+    const emailValue = String(formData.get('username') || email).trim();
+    const passwordValue = String(formData.get('password') || password);
+    setEmail(emailValue);
+    setPassword(passwordValue);
+
     if (isResidentPortal && !country) {
       setError('Selecciona tu país');
       return;
@@ -164,9 +243,18 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
     setLoading(true);
 
     try {
-      const data = await loginApi(email, password, portal, {
+      const data = await loginApi(emailValue, passwordValue, portal, {
         buildingId: selectedBuilding?.id,
       });
+
+      if (portal === 'admin' && data.user?.role === 'ORG_ADMIN' && data.building) {
+        setActiveTenant({
+          organizationId: data.building.organizationId,
+          buildingId: data.building.id,
+          buildingName: data.building.name,
+          organizationName: data.organizationName || '',
+        });
+      }
 
       if (isResidentPortal && data.building) {
         setActiveTenant({
@@ -196,7 +284,26 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
   }
 
   return (
-    <div className="login" key={portal}>
+    <div className={`login${isResidentPortal ? ' login--welcome' : ''}`} key={portal}>
+      {showSplash && (
+        <div className="login-splash" aria-hidden="true">
+          <div className="login-splash__mark">
+            <img src="/assets/logo.png" alt="" />
+            <span>rentados</span>
+          </div>
+        </div>
+      )}
+      {isResidentPortal && (
+        <header className="login-welcome__top">
+          <div className="login-welcome__brand">
+            <img src="/assets/logo.png" alt="" />
+            <span>rentados</span>
+          </div>
+          <h1>Bienvenido</h1>
+          <p>{config.subtitle}</p>
+        </header>
+      )}
+      {!isResidentPortal && (
       <aside className="login__hero" aria-hidden="true">
         <div className="login__hero-bg" />
         <div className="login__hero-overlay login-animate-in login-animate-in--hero-overlay" />
@@ -206,9 +313,11 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
           </p>
         </div>
       </aside>
+      )}
 
-      <main className="login__panel login-animate-in login-animate-in--panel">
-        <div className="login__card">
+      <main className={isResidentPortal ? 'login-welcome__sheet' : 'login__panel login-animate-in login-animate-in--panel'}>
+        <div className={isResidentPortal ? 'login-welcome__card' : 'login__card'}>
+          {!isResidentPortal && (
           <header className="login__header">
             <div className="login__logo-wrap login-animate-in login-animate-in--1">
               <Logo size="lg" />
@@ -216,6 +325,7 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
             <h1 className="login__title login-animate-in login-animate-in--2">{config.title}</h1>
             <p className="login__subtitle login-animate-in login-animate-in--3">{config.subtitle}</p>
           </header>
+          )}
 
           {error && <div className="login__error login-animate-in login-animate-in--4">{error}</div>}
 
@@ -240,9 +350,12 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
                       aria-expanded={showCountryList}
                       aria-labelledby="country-label"
                     >
-                      <span>{country || 'Seleccionar país'}</span>
+                      <span className="login__combo-value">
+                        {COUNTRY_FLAGS[country] && <span className="login__flag">{COUNTRY_FLAGS[country]}</span>}
+                        <span>{country || 'Seleccionar país'}</span>
+                      </span>
                       <span className="login__combo-chevron" aria-hidden="true">
-                        ▾
+                        <IconChevron />
                       </span>
                     </button>
                     {showCountryList && countries.length > 0 && (
@@ -272,20 +385,25 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
                     className={`login__combo-picker${showBuildingList ? ' login__combo-picker--open' : ''}`}
                     ref={buildingPickerRef}
                   >
-                    <input
-                      id="building"
-                      type="search"
-                      value={buildingQuery}
-                      onChange={(e) => handleBuildingQueryChange(e.target.value)}
-                      onFocus={() => {
-                        setShowBuildingList(true);
-                        setShowCountryList(false);
-                      }}
-                      placeholder="Escribe nombre, ciudad o dirección"
-                      autoComplete="off"
-                      required
-                      disabled={!country || buildingsLoading}
-                    />
+                    <div className="login__icon-field">
+                      <FieldIcon>
+                        <IconBuilding />
+                      </FieldIcon>
+                      <input
+                        id="building"
+                        type="search"
+                        value={buildingQuery}
+                        onChange={(e) => handleBuildingQueryChange(e.target.value)}
+                        onFocus={() => {
+                          setShowBuildingList(true);
+                          setShowCountryList(false);
+                        }}
+                        placeholder="Escribe el nombre, ciudad o dirección"
+                        autoComplete="off"
+                        required
+                        disabled={!country || buildingsLoading}
+                      />
+                    </div>
                     {selectedBuilding && (
                       <p className="login__building-selected">
                         {formatBuildingLoginLabel(selectedBuilding)}
@@ -322,30 +440,44 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
 
             <div className="login__field login-animate-in login-animate-in--4">
               <label htmlFor="email">Usuario o correo</label>
-              <input
-                id="email"
-                type="text"
-                name="username"
-                autoComplete="username"
-                inputMode="email"
-                placeholder="41201 o tu@correo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+              <div className="login__icon-field">
+                {isResidentPortal && (
+                  <FieldIcon>
+                    <IconMail />
+                  </FieldIcon>
+                )}
+                <input
+                  id="email"
+                  type="text"
+                  name="username"
+                  autoComplete="username"
+                  inputMode="email"
+                  placeholder={isResidentPortal ? 'Tu correo o usuario' : '41201 o tu@correo.com'}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onInput={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
             </div>
 
             <div className="login__field login-animate-in login-animate-in--5">
               <label htmlFor="password">Contraseña</label>
-              <div className="login__password-wrap">
+              <div className="login__password-wrap login__icon-field">
+                {isResidentPortal && (
+                  <FieldIcon>
+                    <IconLock />
+                  </FieldIcon>
+                )}
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   name="password"
                   autoComplete="current-password"
-                  placeholder="••••••••"
+                  placeholder={isResidentPortal ? 'Tu contraseña' : '••••••••'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onInput={(e) => setPassword(e.target.value)}
                   required
                 />
                 <button
@@ -354,7 +486,7 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                 >
-                  {showPassword ? 'Ocultar' : 'Ver'}
+                  {isResidentPortal ? <IconEye off={showPassword} /> : showPassword ? 'Ocultar' : 'Ver'}
                 </button>
               </div>
             </div>
@@ -371,9 +503,23 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
 
             <button type="submit" className="login__submit login-animate-in login-animate-in--7" disabled={loading}>
               {loading ? 'Ingresando…' : config.submitLabel}
+              {!loading && isResidentPortal && <span className="login__submit-arrow" aria-hidden="true">→</span>}
             </button>
           </form>
 
+          {isResidentPortal ? (
+            <>
+              {location.state?.accountDeleted && (
+                <p className="login-welcome__deleted">Tu cuenta fue eliminada.</p>
+              )}
+              <p className="login-welcome__code">Accede con tu código de apto</p>
+              <nav className="login-welcome__legal" aria-label="Información de Rentados">
+                <Link to="/privacidad">Privacidad</Link>
+                <Link to="/soporte">Soporte</Link>
+                <Link to="/marketing">Rentados</Link>
+              </nav>
+            </>
+          ) : (
           <nav className="login__portal-nav login-animate-in login-animate-in--8" aria-label="Otros portales">
             <p className="login__portal-nav-label">{config.switchPrompt}</p>
             <div className="login__portal-nav-links">
@@ -387,7 +533,9 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
               ))}
             </div>
           </nav>
+          )}
 
+          {!isResidentPortal && (
           <footer className="login__footer login-animate-in login-animate-in--9">
             <p>
               ¿Necesitas ayuda?{' '}
@@ -396,6 +544,7 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
               </a>
             </p>
           </footer>
+          )}
         </div>
       </main>
     </div>

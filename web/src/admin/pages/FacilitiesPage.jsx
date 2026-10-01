@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { adminApi, formatCop, formatDate } from '../../api/client';
 import TimeSelectField from '../components/TimeSelectField';
 import { buildOpenHourSlots, formatOpenHoursRange } from '../../utils/openHours';
+import { formatFacilityCost } from '../facilityCost';
 import '../admin.css';
 
 function statusBadge(status) {
@@ -48,33 +49,13 @@ const emptyForm = {
   slotMinutes: '60',
   minDurationMinutes: '60',
   maxDurationMinutes: '480',
+  minAdvanceBookingDays: '0',
   advanceBookingDays: '30',
 };
 
 function toDateInput(value) {
   if (!value) return '';
   return new Date(value).toISOString().slice(0, 10);
-}
-
-function formatFacilityCost(f) {
-  if (f.bookable) {
-    const mode = f.bookingPricing?.mode || 'free';
-    if (mode === 'hourly' && f.bookingPricing?.hourlyRate > 0) {
-      return `${formatCop(f.bookingPricing.hourlyRate)}/hora · Reservable`;
-    }
-    if (mode === 'blocks' && f.bookingPricing?.blocks?.length) {
-      return `${f.bookingPricing.blocks.length} paquete(s) · Reservable`;
-    }
-    if (mode === 'flat' && (f.bookingPricing?.flatPrice || f.price)) {
-      return `${formatCop(f.bookingPricing?.flatPrice || f.price)} · Reservable`;
-    }
-    return 'Reservable · Gratis';
-  }
-
-  if (f.price > 0) {
-    return `${formatCop(f.price)} · ${PRICING_LABELS[f.pricingType] || f.pricingType}`;
-  }
-  return 'Gratis';
 }
 
 function buildPayload(form) {
@@ -114,7 +95,8 @@ function buildPayload(form) {
           slotMinutes: Number(form.slotMinutes || 60),
           minDurationMinutes: Number(form.minDurationMinutes || 60),
           maxDurationMinutes: Number(form.maxDurationMinutes || 480),
-          advanceBookingDays: Number(form.advanceBookingDays || 30),
+          minAdvanceBookingDays: Number(form.minAdvanceBookingDays ?? 0),
+          advanceBookingDays: Number(form.advanceBookingDays ?? 30),
         }
       : undefined,
   };
@@ -156,7 +138,8 @@ function facilityToForm(facility) {
     slotMinutes: String(facility.bookingRules?.slotMinutes || 60),
     minDurationMinutes: String(facility.bookingRules?.minDurationMinutes || 60),
     maxDurationMinutes: String(facility.bookingRules?.maxDurationMinutes || 480),
-    advanceBookingDays: String(facility.bookingRules?.advanceBookingDays || 30),
+    minAdvanceBookingDays: String(facility.bookingRules?.minAdvanceBookingDays ?? 0),
+    advanceBookingDays: String(facility.bookingRules?.advanceBookingDays ?? 30),
   };
 }
 
@@ -498,10 +481,23 @@ export default function FacilitiesPage() {
                 Días de anticipación
                 <input
                   type="number"
-                  min="1"
+                  min="0"
+                  step="1"
+                  value={form.minAdvanceBookingDays}
+                  onChange={(e) => setForm({ ...form, minAdvanceBookingDays: e.target.value })}
+                />
+                <span className="admin-field-hint">0 permite reservar el mismo día.</span>
+              </label>
+              <label>
+                Máximo días adelante
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
                   value={form.advanceBookingDays}
                   onChange={(e) => setForm({ ...form, advanceBookingDays: e.target.value })}
                 />
+                <span className="admin-field-hint">0 = sin límite de calendario.</span>
               </label>
             </>
           )}

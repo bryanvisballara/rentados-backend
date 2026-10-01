@@ -3,6 +3,16 @@ import { useEffect, useRef } from 'react';
 export default function SignaturePad({ onChange, disabled = false }) {
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
+  const onChangeRef = useRef(onChange);
+  const disabledRef = useRef(disabled);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+  }, [disabled]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -25,8 +35,8 @@ export default function SignaturePad({ onChange, disabled = false }) {
   }
 
   function startDraw(event) {
-    if (disabled) return;
-    event.preventDefault();
+    if (disabledRef.current) return;
+    if (event.cancelable) event.preventDefault();
     drawingRef.current = true;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -36,8 +46,8 @@ export default function SignaturePad({ onChange, disabled = false }) {
   }
 
   function draw(event) {
-    if (!drawingRef.current || disabled) return;
-    event.preventDefault();
+    if (!drawingRef.current || disabledRef.current) return;
+    if (event.cancelable) event.preventDefault();
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const point = getPoint(event);
@@ -49,15 +59,33 @@ export default function SignaturePad({ onChange, disabled = false }) {
     if (!drawingRef.current) return;
     drawingRef.current = false;
     const canvas = canvasRef.current;
-    onChange?.(canvas.toDataURL('image/png'));
+    onChangeRef.current?.(canvas.toDataURL('image/png'));
   }
 
   function clear() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    onChange?.('');
+    onChangeRef.current?.('');
   }
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const touchOpts = { passive: false };
+    canvas.addEventListener('touchstart', startDraw, touchOpts);
+    canvas.addEventListener('touchmove', draw, touchOpts);
+    canvas.addEventListener('touchend', endDraw);
+    canvas.addEventListener('touchcancel', endDraw);
+
+    return () => {
+      canvas.removeEventListener('touchstart', startDraw);
+      canvas.removeEventListener('touchmove', draw);
+      canvas.removeEventListener('touchend', endDraw);
+      canvas.removeEventListener('touchcancel', endDraw);
+    };
+  }, []);
 
   return (
     <div className="signature-pad">
@@ -70,9 +98,6 @@ export default function SignaturePad({ onChange, disabled = false }) {
         onMouseMove={draw}
         onMouseUp={endDraw}
         onMouseLeave={endDraw}
-        onTouchStart={startDraw}
-        onTouchMove={draw}
-        onTouchEnd={endDraw}
       />
       <button type="button" className="admin-btn admin-btn--ghost" onClick={clear} disabled={disabled}>
         Limpiar firma

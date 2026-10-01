@@ -1,4 +1,8 @@
+import { API_BASE } from './apiBase';
+import { restoreNativeAuthFromBackup, syncNativeAuthBackup } from './nativeAuthBackup';
+
 const STORAGE_KEY = 'rentados_auth';
+/** Residente móvil: sesión persistente (≈10 años); configurable vía JWT_EXPIRES_IN en el servidor */
 const TOKEN_KEY = 'rentados_token';
 
 let hydratePromise = null;
@@ -21,16 +25,19 @@ export function persistSession(session) {
   if (!session?.token) return;
   localStorage.setItem(TOKEN_KEY, session.token);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  syncNativeAuthBackup(session);
   window.dispatchEvent(new CustomEvent('rentados:session', { detail: session }));
 }
 
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(STORAGE_KEY);
+  syncNativeAuthBackup(null);
   window.dispatchEvent(new CustomEvent('rentados:session', { detail: null }));
 }
 
 export function loadSession() {
+  restoreNativeAuthFromBackup();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
@@ -57,7 +64,7 @@ export function isHydratingSession() {
 }
 
 async function fetchSession(token) {
-  const res = await fetch('/api/v1/auth/me', {
+  const res = await fetch(`${API_BASE}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 

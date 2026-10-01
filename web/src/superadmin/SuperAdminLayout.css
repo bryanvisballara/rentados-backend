@@ -3,6 +3,7 @@
   display: grid;
   grid-template-columns: 260px 1fr;
   background: var(--color-cream);
+  padding-top: var(--safe-top);
 }
 
 .superadmin-sidebar {

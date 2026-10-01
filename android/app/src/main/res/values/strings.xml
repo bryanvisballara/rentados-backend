@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rentados</string>
+    <string name="offline_title">No se pudo abrir Rentados</string>
+    <string name="offline_message_debug">En la Mac tiene que estar corriendo el servidor local, en el puerto 5578.</string>
+    <string name="offline_message_release">Revisa tu conexión e intenta de nuevo.</string>
+    <string name="retry">Reintentar</string>
+</resources>

@@ -99,7 +99,7 @@ export default function PorteriaPage() {
   return (
     <div className="admin-page">
       <header className="admin-page__header">
-        <h1>Portería</h1>
+        <h1>Recepción/Portería</h1>
         <p>Configura el casillero de paquetes y gestiona los accesos al portal de portería.</p>
       </header>
 

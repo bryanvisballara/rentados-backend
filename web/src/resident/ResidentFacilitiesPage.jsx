@@ -21,16 +21,15 @@ export default function ResidentFacilitiesPage() {
     document.title = 'Servicios del conjunto · Rentados';
     residentApi
       .services()
-      .then((data) => {
-        setServicesData(data);
-        if (!selectedId && data.services?.[0]) {
-          setSelectedId(data.services[0].id);
-        }
-      })
+      .then((data) => setServicesData(data))
       .catch((err) => setError(err.message));
   }, []);
 
-  const selected = servicesData?.services?.find((s) => String(s.id) === String(selectedId));
+  const services = servicesData?.services || [];
+  const selected = services.find((s) => String(s.id) === String(selectedId));
+  const visibleServices = selectedId
+    ? services.filter((s) => String(s.id) === String(selectedId))
+    : services;
 
   return (
     <div className="resident-page">
@@ -44,21 +43,32 @@ export default function ResidentFacilitiesPage() {
 
         {servicesData && (
           <>
-            <div className="resident-services-grid" style={{ marginBottom: '1rem' }}>
-              {servicesData.services.map((service) => (
+            {selectedId && (
+              <div className="resident-facilities-back" style={{ marginBottom: '0.75rem' }}>
+                <button
+                  type="button"
+                  className="resident-link-btn"
+                  onClick={() => setSelectedId('')}
+                >
+                  ← Ver todos los espacios
+                </button>
+              </div>
+            )}
+
+            <div
+              className={`resident-services-grid${
+                selectedId ? ' resident-services-grid--single' : ''
+              }`}
+              style={{ marginBottom: '1rem' }}
+            >
+              {visibleServices.map((service) => (
                 <button
                   key={service.id}
                   type="button"
                   className={`resident-service-card${
                     String(service.id) === String(selectedId) ? ' resident-service-card--active' : ''
                   }${service.blocked ? ' resident-service-card--blocked' : ''}`}
-                  style={{
-                    outline:
-                      String(service.id) === String(selectedId)
-                        ? '2px solid #2d3321'
-                        : undefined,
-                  }}
-                  onClick={() => setSelectedId(service.id)}
+                  onClick={() => setSelectedId(String(service.id))}
                 >
                   <FacilityGlyph icon={service.icon} className="resident-service-card__icon" />
                   <h3>{service.name}</h3>
@@ -74,16 +84,27 @@ export default function ResidentFacilitiesPage() {
               ))}
             </div>
 
-            {selected?.bookable ? (
+            {!selectedId ? (
               <div className="resident-card">
-                <ResidentBookingsSection services={servicesData.services.filter((s) => s.bookable)} />
+                <p className="resident-empty">
+                  Elige un espacio arriba para ver el calendario y reservar.
+                </p>
+              </div>
+            ) : selected?.bookable && selected.available ? (
+              <div className="resident-card">
+                <ResidentBookingsSection
+                  services={services.filter((s) => s.bookable && s.available)}
+                  selectedFacilityId={selectedId}
+                />
               </div>
             ) : (
               <div className="resident-card">
                 <p className="resident-empty">
-                  {selected
-                    ? 'Este servicio no tiene reservas en línea. Consulta con administración.'
-                    : 'Selecciona un servicio para ver detalle.'}
+                  {selected?.blocked
+                    ? 'Este servicio está suspendido para tu unidad. Consulta con administración.'
+                    : selected?.bookable
+                      ? 'Este espacio no está disponible para reservar en este momento.'
+                      : 'Este servicio no tiene reservas en línea. Consulta con administración.'}
                 </p>
               </div>
             )}

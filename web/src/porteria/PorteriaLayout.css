@@ -2,6 +2,7 @@
   display: flex;
   min-height: 100dvh;
   background: var(--color-cream, #f6f4f0);
+  padding-top: var(--safe-top);
 }
 
 .porteria-sidebar {

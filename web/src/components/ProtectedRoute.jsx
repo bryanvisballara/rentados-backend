@@ -18,6 +18,14 @@ export default function ProtectedRoute({ children, roles = [], loginPath = '/adm
     return <Navigate to={loginPath} state={{ from: location }} replace />;
   }
 
+  if (roles.length && !user) {
+    return (
+      <div className="auth-loading">
+        <p>Cargando sesión…</p>
+      </div>
+    );
+  }
+
   if (roles.length && !roles.includes(user?.role)) {
     return <Navigate to={loginPath} replace />;
   }

@@ -59,17 +59,13 @@ export default function SuperAdminDashboardPage() {
           <p className="admin-stat__label">Conjuntos activos</p>
           <p className="admin-stat__value">{counts.buildings ?? '—'}</p>
         </Link>
-        <Link to="/super-admin/solicitudes-prestadores" className="admin-stat admin-stat--link">
-          <p className="admin-stat__label">Solicitudes prestadores</p>
-          <p className="admin-stat__value">{counts.pendingProviders ?? 0}</p>
+        <Link to="/super-admin/servicios-rentados" className="admin-stat admin-stat--link">
+          <p className="admin-stat__label">Servicios a domicilio</p>
+          <p className="admin-stat__value">{counts.homeServices ?? 0}</p>
         </Link>
-        <div className="admin-stat">
-          <p className="admin-stat__label">Prestadores activos</p>
-          <p className="admin-stat__value">{counts.approvedProviders ?? 0}</p>
-        </div>
-        <Link to="/super-admin/cronograma-prestadores" className="admin-stat admin-stat--link">
-          <p className="admin-stat__label">Entrevistas programadas</p>
-          <p className="admin-stat__value">{counts.upcomingInterviews ?? 0}</p>
+        <Link to="/super-admin/servicios-rentados" className="admin-stat admin-stat--link">
+          <p className="admin-stat__label">Perfiles (personas / empresas)</p>
+          <p className="admin-stat__value">{counts.homeServiceMembers ?? 0}</p>
         </Link>
         <Link to="/super-admin/shop" className="admin-stat admin-stat--link">
           <p className="admin-stat__label">Productos shop</p>

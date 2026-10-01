@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import './Logo.css';
 
-const LOGO_SOURCES = ['/assets/logo.png', '/assets/logo.svg'];
+const LOGO_SOURCES = ['/assets/app-icon.jpg', '/assets/logo.png', '/assets/logo.svg'];
 
 export default function Logo({ size = 'md' }) {
   const [sourceIndex, setSourceIndex] = useState(0);

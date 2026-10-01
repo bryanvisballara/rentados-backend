@@ -67,7 +67,6 @@ export default function ResidentShopSection({ shopData }) {
       if (product.stock != null && nextQty > product.stock) return prev;
       return { ...prev, [product._id]: nextQty };
     });
-    setShowCheckout(true);
   }
 
   function updateCartQty(productId, quantity) {
@@ -124,16 +123,21 @@ export default function ResidentShopSection({ shopData }) {
   }
 
   return (
-    <section className="resident__section resident__shop">
+    <section className={`resident__section resident__shop${cartCount > 0 ? ' resident__shop--has-cart' : ''}`}>
       {error && <div className="resident__error">{error}</div>}
       {success && <div className="resident__shop-success">{success}</div>}
 
       {featured.length > 0 && categoryFilter === 'all' && (
-        <div className="resident__card">
+        <div className="resident__shop-featured">
           <h2>Destacados</h2>
-          <div className="resident__shop-grid">
+          <div className="resident__shop-featured-track">
             {featured.map((product) => (
-              <ShopProductCard key={product._id} product={product} featured onAdd={addToCart} />
+              <ShopProductCard
+                key={`featured-${product._id}`}
+                product={product}
+                featured
+                onAdd={addToCart}
+              />
             ))}
           </div>
         </div>
@@ -201,68 +205,81 @@ export default function ResidentShopSection({ shopData }) {
       )}
 
       {cartCount > 0 && (
-        <div className={`resident__shop-cart ${showCheckout ? 'is-open' : ''}`}>
-          <button
-            type="button"
-            className="resident__shop-cart-toggle"
-            onClick={() => setShowCheckout((prev) => !prev)}
-          >
-            <span>
-              {cartCount} producto(s) · {formatMoney(cartTotal, cartCurrency)}
-            </span>
-            <span>{showCheckout ? 'Ocultar' : 'Ver pedido'}</span>
-          </button>
-
+        <>
           {showCheckout && (
-            <div className="resident__shop-cart-panel">
-              <ul className="resident__shop-cart-lines">
-                {cartLines.map(({ product, quantity }) => (
-                  <li key={product._id}>
-                    <div>
-                      <strong>{product.name}</strong>
-                      <p>{formatMoney(product.price, product.currency)} c/u</p>
-                    </div>
-                    <div className="resident__shop-cart-qty">
-                      <button
-                        type="button"
-                        onClick={() => updateCartQty(product._id, quantity - 1)}
-                        aria-label="Quitar uno"
-                      >
-                        −
-                      </button>
-                      <span>{quantity}</span>
-                      <button
-                        type="button"
-                        onClick={() => updateCartQty(product._id, quantity + 1)}
-                        aria-label="Agregar uno"
-                        disabled={product.stock != null && quantity >= product.stock}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <label className="resident__shop-cart-notes">
-                Notas para el pedido (opcional)
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                  placeholder="Ej: entregar en portería, apto 502…"
-                />
-              </label>
-              <button
-                type="button"
-                className="resident__shop-cart-submit"
-                onClick={submitOrder}
-                disabled={submitting}
-              >
-                {submitting ? 'Enviando…' : 'Confirmar pedido'}
-              </button>
-            </div>
+            <button
+              type="button"
+              className="resident__shop-cart-backdrop"
+              aria-label="Cerrar pedido"
+              onClick={() => setShowCheckout(false)}
+            />
           )}
-        </div>
+          <div className={`resident__shop-cart ${showCheckout ? 'is-open' : ''}`}>
+            {showCheckout && (
+              <div className="resident__shop-cart-panel">
+                <p className="resident__shop-cart-title">Tu pedido</p>
+                <ul className="resident__shop-cart-lines">
+                  {cartLines.map(({ product, quantity }) => (
+                    <li key={product._id}>
+                      <div className="resident__shop-cart-line-copy">
+                        <strong>{product.name}</strong>
+                        <p>{formatMoney(product.price, product.currency)} c/u</p>
+                      </div>
+                      <div className="resident__shop-cart-qty">
+                        <button
+                          type="button"
+                          onClick={() => updateCartQty(product._id, quantity - 1)}
+                          aria-label="Quitar uno"
+                        >
+                          −
+                        </button>
+                        <span>{quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => updateCartQty(product._id, quantity + 1)}
+                          aria-label="Agregar uno"
+                          disabled={product.stock != null && quantity >= product.stock}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <label className="resident__shop-cart-notes">
+                  Notas (opcional)
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Ej: entregar en portería"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="resident__shop-cart-submit"
+                  onClick={submitOrder}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Enviando…' : 'Confirmar pedido'}
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              className="resident__shop-cart-toggle"
+              onClick={() => setShowCheckout((prev) => !prev)}
+            >
+              <span className="resident__shop-cart-toggle__count">{cartCount}</span>
+              <span className="resident__shop-cart-toggle__label">
+                {cartCount === 1 ? 'producto' : 'productos'} · {formatMoney(cartTotal, cartCurrency)}
+              </span>
+              <span className="resident__shop-cart-toggle__action">
+                {showCheckout ? 'Cerrar' : 'Ver'}
+              </span>
+            </button>
+          </div>
+        </>
       )}
     </section>
   );
@@ -282,7 +299,6 @@ function ShopProductCard({ product, featured, onAdd }) {
         ) : (
           <div className="resident__shop-card-placeholder">Sin imagen</div>
         )}
-        {featured && <span className="resident__shop-badge">Destacado</span>}
       </div>
       <div className="resident__shop-card-body">
         {product.categoryId?.name && (

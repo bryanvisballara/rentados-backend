@@ -8,3 +8,10 @@ coverage/
 .idea/
 web/dist/
 ios/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/keystore.properties
+android/keystore/
+android/app/build/
+android/build/

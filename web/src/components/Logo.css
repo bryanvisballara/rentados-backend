@@ -1,6 +1,7 @@
 .logo {
   display: block;
   object-fit: contain;
+  border-radius: 22%;
 }
 
 .logo--sm {

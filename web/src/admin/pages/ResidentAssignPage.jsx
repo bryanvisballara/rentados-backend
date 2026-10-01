@@ -199,7 +199,10 @@ export default function ResidentAssignPage() {
     <div className="admin-page">
       <header className="admin-page__header">
         <h1>Residentes</h1>
-        <p>Crea usuarios con contraseña y asígnalos a un apartamento o casa.</p>
+        <p>
+          Crea usuarios con contraseña y asígnalos a un apartamento o casa. Registra el celular
+          (WhatsApp) para que portería pueda escribirles desde Notificaciones.
+        </p>
       </header>
 
       {error && <div className="admin-error">{error}</div>}
@@ -231,6 +234,15 @@ export default function ResidentAssignPage() {
               onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
               placeholder="Ej: 41201 o usuario@correo.com"
               required
+            />
+          </label>
+          <label>
+            Celular / WhatsApp
+            <input
+              type="tel"
+              value={createForm.phone}
+              onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+              placeholder="3001234567 o 573001234567"
             />
           </label>
           <label>
@@ -377,6 +389,15 @@ export default function ResidentAssignPage() {
               />
             </label>
             <label>
+              Celular / WhatsApp
+              <input
+                type="tel"
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                placeholder="3001234567 o 573001234567"
+              />
+            </label>
+            <label>
               Nueva contraseña (opcional)
               <input
                 value={editForm.password}
@@ -418,6 +439,7 @@ export default function ResidentAssignPage() {
               <tr>
                 <th>Residente</th>
                 <th>Email</th>
+                <th>WhatsApp</th>
                 <th>Unidad</th>
                 <th>Torre</th>
                 <th>Relación</th>
@@ -428,7 +450,7 @@ export default function ResidentAssignPage() {
             <tbody>
               {residents.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="admin-empty">
+                  <td colSpan={8} className="admin-empty">
                     No hay residentes con los filtros seleccionados.
                   </td>
                 </tr>
@@ -439,6 +461,7 @@ export default function ResidentAssignPage() {
                       {r.userId?.firstName} {r.userId?.lastName}
                     </td>
                     <td>{r.userId?.email}</td>
+                    <td>{r.userId?.phone || '—'}</td>
                     <td>{r.unitId?.number || '—'}</td>
                     <td>{r.unitId?.tower || '—'}</td>
                     <td>{RELATIONSHIP_LABELS[r.relationship] || r.relationship}</td>

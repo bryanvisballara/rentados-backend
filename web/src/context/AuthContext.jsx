@@ -5,7 +5,9 @@ import {
   hydrateSession,
   loadSession,
   persistSession,
+  refreshSession,
 } from '../api/authSession';
+import { clearResidentHomeCache } from '../resident/residentHomeCache';
 
 const AuthContext = createContext(null);
 
@@ -38,12 +40,31 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('rentados:session', handleSession);
   }, []);
 
+  useEffect(() => {
+    function onResume() {
+      if (document.visibilityState !== 'visible') return;
+      if (!loadSession()?.token) return;
+      refreshSession()
+        .then((session) => {
+          if (session) setAuth(session);
+        })
+        .catch(() => {});
+    }
+
+    document.addEventListener('visibilitychange', onResume);
+    window.addEventListener('pageshow', onResume);
+    return () => {
+      document.removeEventListener('visibilitychange', onResume);
+      window.removeEventListener('pageshow', onResume);
+    };
+  }, []);
+
   const value = useMemo(
     () => ({
       user: auth?.user ?? null,
       token: auth?.token ?? null,
       ready,
-      isAuthenticated: Boolean(auth?.token && (auth?.user || !ready)),
+      isAuthenticated: Boolean(auth?.token),
       loginSuccess(data) {
         const session = { token: data.token, user: formatUser(data.user) };
         persistSession(session);
@@ -52,6 +73,7 @@ export function AuthProvider({ children }) {
       },
       logout() {
         clearSession();
+        clearResidentHomeCache();
         setAuth(null);
       },
       updateSession(session) {

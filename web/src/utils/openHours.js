@@ -17,6 +17,33 @@ export function formatHourLabel(hour) {
   return `${String(hour).padStart(2, '0')}:00`;
 }
 
+export function formatMinutesAsTime(totalMinutes) {
+  const mins = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** Misma normalización que guarda la API de administración. */
+export function normalizeOpenHours(openHours) {
+  if (!openHours?.start && !openHours?.end) {
+    return { start: '08:00', end: '22:00' };
+  }
+  const startMin = parseTimeToMinutes(openHours.start || '08:00');
+  const endMin = parseTimeToMinutes(openHours.end || '22:00');
+  return {
+    start: formatMinutesAsTime(startMin),
+    end: formatMinutesAsTime(endMin),
+  };
+}
+
+/** Horario efectivo del calendario (incluye 24 h). */
+export function resolveFacilityCalendarOpenHours(facility) {
+  if (!facility) return null;
+  if (facility.open24Hours) return { start: '00:00', end: '00:00' };
+  return normalizeOpenHours(facility.openHours);
+}
+
 export function formatOpenHoursRange(openHours, open24Hours = false) {
   if (open24Hours) return '24 horas';
   if (!openHours?.start || !openHours?.end) return '—';
@@ -56,9 +83,14 @@ export function buildOpenHourSlots(openHours = {}) {
 }
 
 export function slotToDate(day, slot, openHours) {
-  const { crossesMidnight, startHour } = buildOpenHourSlots(openHours);
+  const grid = buildOpenHourSlots(openHours);
+  const { crossesMidnight, startHour, startMin } = grid;
   const date = new Date(day);
-  date.setHours(slot.hour, 0, 0, 0);
+  let minutes = slot.hour * 60;
+  if (slot.rowIndex === 0 && startMin > minutes) {
+    minutes = startMin;
+  }
+  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
   if (crossesMidnight && slot.hour < startHour) {
     date.setDate(date.getDate() + 1);
   }

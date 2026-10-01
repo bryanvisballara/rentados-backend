@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "996726943525",
+    "project_id": "rentados-8f67d",
+    "storage_bucket": "rentados-8f67d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:996726943525:android:10c6289e105cc58e2f74cc",
+        "android_client_info": {
+          "package_name": "com.rentados.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnex9YAHibWO_wBpavr3fNJIw9CvyuGvs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

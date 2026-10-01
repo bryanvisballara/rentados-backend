@@ -6,6 +6,7 @@ const { getContactSettings } = require('../utils/contactSettings');
 const { formatPackage } = require('../utils/lockerPackage');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { getBillingSettings, enrichPayment, getUnitAdministrationFee } = require('../utils/billing');
+const { buildAdministrationOutstanding } = require('../utils/administrationBalance');
 const { buildPublicationAudienceFilter, resolveUnitTowerIds } = require('../utils/publicationAudience');
 const { syncAdministrationCharges } = require('../utils/administrationCharges');
 const { getActiveSuspensions, getSuspendedFacilityIds } = require('../utils/suspensions');
@@ -570,21 +571,42 @@ router.post('/restaurants/:id/checkout', async (req, res) => {
 router.post('/billing/pay', async (req, res) => {
   try {
     const resident = await getResidentContext(req.user);
-    const { paymentId, cardId } = req.body;
+    const { paymentId, cardId, settleOutstandingAdmin } = req.body;
     if (!cardId) return res.status(400).json({ error: 'Elige o agrega una tarjeta para pagar' });
-    if (!paymentId) return res.status(400).json({ error: 'Cuota no encontrada' });
-
-    const payment = await Payment.findOne({
-      _id: paymentId,
-      residentId: resident._id,
-    });
-    if (!payment) return res.status(404).json({ error: 'Cuota no encontrada' });
-    if (payment.status === 'paid') return res.status(400).json({ error: 'Esta cuota ya está pagada' });
 
     const org = await Organization.findById(resident.organizationId);
     const billingSettings = getBillingSettings(org);
-    const enriched = enrichPayment(payment, billingSettings);
-    const amount = Number(enriched.totalDue ?? payment.amount);
+
+    const payments = await Payment.find({ unitId: resident.unitId._id })
+      .sort({ dueDate: 1 })
+      .limit(48);
+    const enriched = payments.map((p) => enrichPayment(p, billingSettings));
+    const outstanding = buildAdministrationOutstanding(enriched);
+
+    let amount = 0;
+    let administrationPaymentId;
+    let payload;
+
+    if (settleOutstandingAdmin) {
+      amount = Number(outstanding.totalDue);
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: 'No hay saldo pendiente de administración' });
+      }
+      administrationPaymentId = outstanding.lines[0]?.paymentId;
+      payload = { settleOutstandingAdmin: true };
+    } else {
+      if (!paymentId) return res.status(400).json({ error: 'Cuota no encontrada' });
+      const payment = await Payment.findOne({
+        _id: paymentId,
+        residentId: resident._id,
+      });
+      if (!payment) return res.status(404).json({ error: 'Cuota no encontrada' });
+      if (payment.status === 'paid') return res.status(400).json({ error: 'Esta cuota ya está pagada' });
+      const row = enrichPayment(payment, billingSettings);
+      amount = Number(row.totalDue ?? payment.amount);
+      administrationPaymentId = payment._id;
+    }
+
     if (!amount || amount <= 0) return res.status(400).json({ error: 'No hay saldo por pagar' });
 
     const result = await startCardCharge({
@@ -593,8 +615,9 @@ router.post('/billing/pay', async (req, res) => {
       cardId,
       purpose: 'administration',
       amount,
-      currency: payment.currency || 'COP',
-      administrationPaymentId: payment._id,
+      currency: 'COP',
+      administrationPaymentId,
+      payload,
     });
 
     res.status(result.payment.status === 'paid' ? 201 : 202).json(result);
@@ -651,14 +674,16 @@ router.get('/billing', async (req, res) => {
       .limit(48);
 
     const enriched = payments.map((p) => enrichPayment(p, billingSettings));
-    const totalDue = enriched.reduce((sum, p) => sum + (p.totalDue || 0), 0);
-    const totalInterest = enriched.reduce((sum, p) => sum + (p.interestAmount || 0), 0);
+    const adminOutstanding = buildAdministrationOutstanding(enriched);
+    const totalDue = adminOutstanding.totalDue;
+    const totalInterest = adminOutstanding.totalInterest;
 
     res.json({
       unit: unit || resident.unitId,
       building: building ? { name: building.name } : null,
       billingSettings,
       monthlyAdministrationFee: getUnitAdministrationFee(resident.unitId, billingSettings),
+      adminOutstanding,
       summary: {
         totalDue,
         totalInterest,

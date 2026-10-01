@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import FacilityCalendar, { addDays, startOfWeek } from '../../components/FacilityCalendar';
 import { adminApi, formatCop, formatDateTime } from '../../api/client';
 import ResidentSelectField from '../components/ResidentSelectField';
-import { formatOpenHoursRange } from '../../utils/openHours';
+import { formatOpenHoursRange, resolveFacilityCalendarOpenHours } from '../../utils/openHours';
 import '../admin.css';
 import '../../components/FacilityCalendar.css';
 
@@ -146,7 +146,7 @@ export default function FacilityBookingsPage() {
     <div className="admin-page">
       <header className="admin-page__header">
         <p className="admin-breadcrumb">
-          <Link to="/admin/servicios">Servicios</Link> / Reservas
+          <Link to="/admin/servicios">Servicios del conjunto</Link> / Reservas
         </p>
         <h1>Calendario de reservas</h1>
         <p>Disponibilidad y reservas de salón social, BBQ, sauna y demás espacios por hora o paquetes.</p>
@@ -196,7 +196,8 @@ export default function FacilityBookingsPage() {
         {facilityId ? (
           <FacilityCalendar
             weekStart={weekStart}
-            openHours={selectedFacility?.openHours}
+            facility={selectedFacility}
+            openHours={resolveFacilityCalendarOpenHours(selectedFacility)}
             slotMinutes={selectedFacility?.bookingRules?.slotMinutes || 60}
             events={bookings}
             onSelectSlot={openCreate}
@@ -205,7 +206,7 @@ export default function FacilityBookingsPage() {
         ) : (
           <p className="admin-empty">
             Marca un servicio como reservable en{' '}
-            <Link to="/admin/servicios">Servicios</Link> para ver su calendario.
+            <Link to="/admin/servicios">Servicios del conjunto</Link> para ver su calendario.
           </p>
         )}
       </div>

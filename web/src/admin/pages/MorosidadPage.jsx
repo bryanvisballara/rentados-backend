@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { adminApi, formatCop, formatDate } from '../../api/client';
+import { formatFacilityCost } from '../facilityCost';
 import '../admin.css';
 
 function buildOverdueRows(units, payments) {
@@ -69,6 +71,7 @@ const emptySuspension = {
 };
 
 export default function MorosidadPage() {
+  const location = useLocation();
   const selectAllRef = useRef(null);
   const selectAllFacilitiesRef = useRef(null);
   const [billing, setBilling] = useState({
@@ -135,7 +138,7 @@ export default function MorosidadPage() {
 
   useEffect(() => {
     load().catch((err) => setError(err.message));
-  }, []);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -385,7 +388,8 @@ export default function MorosidadPage() {
         <h2>WhatsApp para residentes</h2>
         <p className="admin-empty" style={{ marginTop: 0 }}>
           Estos números se usan en los botones “Hablar con recepción” y “Hablar con administración”
-          del portal del residente. Usa el número con indicativo (ej. 573001234567) o celular
+          del portal del residente. El celular de cada residente (para que portería les escriba)
+          se registra en Admin → Residentes. Usa el número con indicativo (ej. 573001234567) o celular
           colombiano de 10 dígitos.
         </p>
         <form className="admin-form" onSubmit={saveContacts}>
@@ -573,11 +577,7 @@ export default function MorosidadPage() {
                           </label>
                         </td>
                         <td>{f.name}</td>
-                        <td>
-                          {f.price > 0
-                            ? `${formatCop(f.price)} · ${f.pricingType === 'monthly' ? 'Mensual' : f.pricingType === 'per_use' ? 'Por uso' : 'Gratis'}`
-                            : 'Gratis'}
-                        </td>
+                        <td>{formatFacilityCost(f)}</td>
                       </tr>
                     ))
                   )}
@@ -703,8 +703,7 @@ export default function MorosidadPage() {
                       onChange={() => toggleFacility(f._id)}
                     />
                     <span>
-                      {f.name}
-                      {f.price > 0 ? ` · ${formatCop(f.price)}` : ' · Gratis'}
+                      {f.name} · {formatFacilityCost(f)}
                     </span>
                   </label>
                 ))}

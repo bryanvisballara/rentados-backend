@@ -1,15 +1,12 @@
 export const LOGIN_PORTALS = {
   resident: {
     id: 'resident',
-    title: 'Hola, bienvenido',
-    subtitle: 'Elige tu país y conjunto, luego accede con tu código de apto o correo.',
+    title: 'Bienvenido',
+    subtitle: 'Avisos, reservas y pagos de tu hogar, en un solo lugar.',
     heroTagline: 'Tu conjunto, simplificado',
     submitLabel: 'Iniciar sesión',
     switchPrompt: '¿Acceso corporativo?',
-    switchLinks: [
-      { label: 'Administración', to: '/admin/login' },
-      { label: 'Prestadores', to: '/provider/login' },
-    ],
+    switchLinks: [{ label: 'Administración', to: '/admin/login' }],
   },
   admin: {
     id: 'admin',
@@ -22,7 +19,6 @@ export const LOGIN_PORTALS = {
       { label: 'Portal de residentes', to: '/login' },
       { label: 'Super administración', to: '/super-admin/login' },
       { label: 'Portería', to: '/porteria/login' },
-      { label: 'Prestadores', to: '/provider/login' },
     ],
   },
   superadmin: {
@@ -35,19 +31,6 @@ export const LOGIN_PORTALS = {
     switchLinks: [
       { label: 'Administración de conjunto', to: '/admin/login' },
       { label: 'Portal de residentes', to: '/login' },
-    ],
-  },
-  provider: {
-    id: 'provider',
-    title: 'Portal de prestadores',
-    subtitle: 'Revisa solicitudes y gestiona tu agenda de servicios.',
-    heroTagline: 'Tu trabajo, organizado',
-    submitLabel: 'Ingresar al portal',
-    switchPrompt: '¿Buscas otro acceso?',
-    switchLinks: [
-      { label: 'Portal de residentes', to: '/login' },
-      { label: 'Registrarse como prestador', to: '/provider/register' },
-      { label: 'Administración', to: '/admin/login' },
     ],
   },
   porteria: {
