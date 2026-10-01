@@ -209,7 +209,7 @@ class MainActivity : AppCompatActivity() {
               root.style.setProperty('--screen-height', css(${webView.height}) + 'px');
               root.style.setProperty('--app-height', css(${webView.height}) + 'px');
               root.style.setProperty('--resident-nav-dock-bottom', (css($bottom) + 8) + 'px');
-              root.style.setProperty('--resident-edge-top', '8px');
+              root.style.setProperty('--resident-edge-top', (css($top) + 18) + 'px');
               var style = document.getElementById('rentados-native-fix');
               if (!style) {
                 style = document.createElement('style');

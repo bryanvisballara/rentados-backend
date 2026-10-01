@@ -114,18 +114,25 @@ async function loadInbox(userId, organizationId, unitId) {
   };
 }
 
-async function clearDismissibleNotifications(userId, organizationId, unitId) {
+async function dismissNotifications(userId, organizationId, unitId, ids) {
   const inbox = await loadInbox(userId, organizationId, unitId);
-  const lockedIds = inbox.notifications.filter((item) => item.locked).map((item) => item.id);
-  await ResidentNotification.updateMany(
-    {
-      userId,
-      organizationId,
-      dismissed: { $ne: true },
-      _id: { $nin: lockedIds },
-    },
-    { $set: { dismissed: true, dismissedAt: new Date(), read: true, readAt: new Date() } }
+  const locked = new Set(
+    inbox.notifications.filter((item) => item.locked).map((item) => String(item.id))
   );
+  const chosen = [...new Set((ids || []).map((id) => String(id)))].filter(
+    (id) => id && !locked.has(id)
+  );
+  if (chosen.length) {
+    await ResidentNotification.updateMany(
+      {
+        _id: { $in: chosen },
+        userId,
+        organizationId,
+        dismissed: { $ne: true },
+      },
+      { $set: { dismissed: true, dismissedAt: new Date(), read: true, readAt: new Date() } }
+    );
+  }
   return loadInbox(userId, organizationId, unitId);
 }
 
@@ -144,6 +151,6 @@ async function dismissLockerArrivalNotices(packageId) {
 module.exports = {
   badgeCountsForUsers,
   loadInbox,
-  clearDismissibleNotifications,
+  dismissNotifications,
   dismissLockerArrivalNotices,
 };

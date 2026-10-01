@@ -73,7 +73,7 @@ html.rentados-native-shell .resident-app__main {
 
 html.rentados-native-shell .resident-page__header,
 html.rentados-native-shell .resident-checkout__top {
-  padding: calc(0.35rem + var(--resident-edge-top, 0.5rem)) 1rem 0.15rem;
+  padding: calc(max(var(--safe-top, 0px), var(--resident-edge-top, 0px), 2.75rem) + 0.45rem) 1rem 0.15rem;
 }
 
 html.rentados-native-shell .resident-page__header {
@@ -87,7 +87,7 @@ html.rentados-native-shell .resident-hero {
 }
 
 html.rentados-native-shell .resident-hero__content {
-  padding-top: calc(0.65rem + var(--resident-edge-top, 0.5rem));
+  padding-top: calc(max(var(--safe-top, 0px), var(--resident-edge-top, 0px), 2.75rem) + 0.85rem);
 }
 
 .resident-app__frame {
@@ -636,6 +636,53 @@ html.rentados-native-shell .resident-sos-fab {
 
 .resident-notices__clear:disabled {
   opacity: 0.4;
+  cursor: default;
+}
+
+.resident-notices__clear--on {
+  background: #1e5a3d;
+  color: #fff;
+  border-color: #1e5a3d;
+}
+
+.resident-notices__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.resident-notices__delete {
+  border: none;
+  border-radius: 999px;
+  background: #9b1c1c;
+  color: #fff;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+
+.resident-notices__delete:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.resident-notices__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  cursor: pointer;
+}
+
+.resident-notices__row input {
+  margin-top: 0.2rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: #1e5a3d;
+}
+
+.resident-notices__item--locked .resident-notices__row {
   cursor: default;
 }
 

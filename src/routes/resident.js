@@ -1014,11 +1014,13 @@ router.get('/notifications', async (req, res) => {
 router.post('/notifications/clear', async (req, res) => {
   try {
     const resident = await getResidentContext(req.user);
-    const { clearDismissibleNotifications } = require('../utils/appBadge');
-    const inbox = await clearDismissibleNotifications(
+    const { dismissNotifications } = require('../utils/appBadge');
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const inbox = await dismissNotifications(
       req.user._id,
       resident.organizationId,
-      resident.unitId._id
+      resident.unitId._id || resident.unitId,
+      ids
     );
     res.json({ ...inbox, unreadCount: inbox.alerts });
   } catch (err) {
