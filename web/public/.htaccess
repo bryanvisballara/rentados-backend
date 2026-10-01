@@ -8,3 +8,10 @@
 </IfModule>
 
 ErrorDocument 404 /index.html
+
+<IfModule mod_headers.c>
+  SetEnvIf Request_URI "^/assets/" rentados_asset=1
+  Header set Cache-Control "public, max-age=31536000, immutable" env=rentados_asset
+  Header set Cache-Control "no-cache, no-store, must-revalidate" env=!rentados_asset
+  Header set Pragma "no-cache" env=!rentados_asset
+</IfModule>

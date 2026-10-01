@@ -83,8 +83,51 @@ struct WebView: UIViewRepresentable {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.isOpaque = false
         webView.backgroundColor = .clear
-        webView.load(URLRequest(url: url))
+        Self.loadFresh(webView: webView, url: url)
         return webView
+    }
+
+    private static let webCacheVersionKey = "rentados_web_cache_version"
+
+    private static var webCacheVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+        return "\(version).\(build)"
+    }
+
+    /// Evita que WKWebView sirva HTML/JS viejos tras un deploy en Hostinger.
+    private static func loadFresh(webView: WKWebView, url: URL) {
+        let performLoad = {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            webView.load(request)
+        }
+
+        let stored = UserDefaults.standard.string(forKey: webCacheVersionKey)
+        let current = webCacheVersion
+        guard stored != current else {
+            performLoad()
+            return
+        }
+
+        let dataStore = WKWebsiteDataStore.default()
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        dataStore.fetchDataRecords(ofTypes: types) { records in
+            let rentadosRecords = records.filter {
+                $0.displayName.localizedCaseInsensitiveContains("rentados")
+            }
+            let group = DispatchGroup()
+            for record in rentadosRecords {
+                group.enter()
+                dataStore.removeData(ofTypes: types, for: [record]) {
+                    group.leave()
+                }
+            }
+            group.notify(queue: .main) {
+                UserDefaults.standard.set(current, forKey: webCacheVersionKey)
+                performLoad()
+            }
+        }
     }
 
     private static let pushSessionScript = """

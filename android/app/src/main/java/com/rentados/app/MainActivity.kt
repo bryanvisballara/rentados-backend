@@ -137,12 +137,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadApp(forceReload: Boolean) {
         showOffline(false)
+        ensureFreshWebCache()
         val url = AppConfig.webUrl
-        if (forceReload || binding.webView.url != url) {
+        binding.webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        if (forceReload || binding.webView.url?.startsWith(url.substringBefore('?')) != true) {
             binding.webView.loadUrl(url)
         } else {
             binding.webView.reload()
         }
+    }
+
+    private fun ensureFreshWebCache() {
+        val prefs = getSharedPreferences("rentados_web", MODE_PRIVATE)
+        val key = "cache_version"
+        val current = BuildConfig.VERSION_CODE.toString()
+        if (prefs.getString(key, null) == current) return
+        binding.webView.clearCache(true)
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+        prefs.edit().putString(key, current).apply()
     }
 
     private fun showOffline(show: Boolean) {
