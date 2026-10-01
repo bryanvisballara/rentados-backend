@@ -42,6 +42,7 @@ async function notifyUnitAboutPackage(pkg, unitId, organization) {
     body,
     imageUrl: pkg.photoUrl,
     lockerPackageId: pkg._id,
+    url: '/app',
   });
 
   if (notifications.length > 0) {
@@ -191,6 +192,17 @@ async function markPackagePickedUp(packageId, context, options = {}) {
   pkg.signatureRecipientName = options.signatureRecipientName?.trim() || undefined;
   pkg.signatureData = options.signatureData || undefined;
   await pkg.save();
+
+  await notifyUnitResidents({
+    organization,
+    unitId: pkg.unitId,
+    type: 'locker_package',
+    title: 'Paquete entregado',
+    body: 'Portería registró la entrega de tu paquete.',
+    lockerPackageId: pkg._id,
+    url: '/app',
+    meta: { event: 'picked_up' },
+  }).catch(() => {});
 
   const populated = await LockerPackage.findById(pkg._id)
     .populate('registeredBy', 'firstName lastName')

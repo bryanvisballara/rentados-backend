@@ -55,7 +55,32 @@ class RentadosJsBridge(
         }
     }
 
+    fun injectAuthRestore(webView: WebView) {
+        val raw = getAuthSession()
+        if (raw.isBlank()) return
+        val escaped = JSONObject.quote(raw)
+        webView.evaluateJavascript(
+            """
+            (function () {
+              try {
+                var raw = $escaped;
+                if (!raw) return;
+                if (!localStorage.getItem('rentados_token')) {
+                  var session = JSON.parse(raw);
+                  if (session && session.token) {
+                    localStorage.setItem('rentados_token', session.token);
+                    localStorage.setItem('rentados_auth', raw);
+                  }
+                }
+              } catch (e) {}
+            })();
+            """.trimIndent(),
+            null,
+        )
+    }
+
     fun injectBridgeScripts(webView: WebView) {
+        injectAuthRestore(webView)
         webView.evaluateJavascript(PUSH_SESSION_SCRIPT, null)
         webView.evaluateJavascript(OPEN_EXTERNAL_SCRIPT, null)
         webView.evaluateJavascript(DEPLOY_WATCHER_SCRIPT, null)

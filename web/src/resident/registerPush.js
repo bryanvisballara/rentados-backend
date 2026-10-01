@@ -5,6 +5,33 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
 }
 
+async function syncWebPushSubscription(api) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    return;
+  }
+
+  const permission =
+    Notification.permission === 'granted'
+      ? 'granted'
+      : Notification.permission === 'denied'
+        ? 'denied'
+        : await Notification.requestPermission();
+  if (permission !== 'granted') return;
+
+  const registration = await navigator.serviceWorker.register('/sw.js');
+  const { publicKey } = await api.pushPublicKey();
+  if (!publicKey) return;
+
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+  }
+  await api.registerPushDevice({ platform: 'web', subscription: subscription.toJSON() });
+}
+
 export function registerResidentPush(api) {
   window.rentadosRegisterIosPush = (token) => {
     window.__rentadosIosPushToken = token;
@@ -23,25 +50,16 @@ export function registerResidentPush(api) {
     window.rentadosRegisterAndroidPush(window.__rentadosAndroidPushToken);
   }
 
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    return;
-  }
+  syncWebPushSubscription(api).catch(() => {});
 
-  navigator.serviceWorker.register('/sw.js').then(async (registration) => {
-    const permission =
-      Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
-    if (permission !== 'granted') return;
-
-    const { publicKey } = await api.pushPublicKey();
-    if (!publicKey) return;
-
-    let subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (window.__rentadosIosPushToken) {
+      window.rentadosRegisterIosPush(window.__rentadosIosPushToken);
     }
-    await api.registerPushDevice({ platform: 'web', subscription: subscription.toJSON() });
-  }).catch(() => {});
+    if (window.__rentadosAndroidPushToken) {
+      window.rentadosRegisterAndroidPush(window.__rentadosAndroidPushToken);
+    }
+    syncWebPushSubscription(api).catch(() => {});
+  });
 }

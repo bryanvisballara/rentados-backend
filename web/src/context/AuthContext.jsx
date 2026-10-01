@@ -7,6 +7,7 @@ import {
   persistSession,
   refreshSession,
 } from '../api/authSession';
+import { restoreNativeAuthFromBackup } from '../api/nativeAuthBackup';
 import { clearResidentHomeCache } from '../resident/residentHomeCache';
 
 const AuthContext = createContext(null);
@@ -43,7 +44,12 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     function onResume() {
       if (document.visibilityState !== 'visible') return;
-      if (!loadSession()?.token) return;
+      restoreNativeAuthFromBackup();
+      const stored = loadSession();
+      if (!stored?.token) return;
+      if (stored.user) {
+        persistSession(stored);
+      }
       refreshSession()
         .then((session) => {
           if (session) setAuth(session);

@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (::binding.isInitialized && !binding.webView.url.isNullOrBlank()) {
+            jsBridge.injectAuthRestore(binding.webView)
             jsBridge.checkDeployUpdate(binding.webView)
         }
     }

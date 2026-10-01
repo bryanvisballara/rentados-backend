@@ -189,11 +189,12 @@ struct WebView: UIViewRepresentable {
           var raw = '\(rawLiteral)';
           if (!raw) return;
           try {
+            var session = JSON.parse(raw);
+            if (!session || !session.token) return;
             if (!localStorage.getItem('rentados_token')) {
-              var session = JSON.parse(raw);
               localStorage.setItem('rentados_token', session.token);
-              localStorage.setItem('rentados_auth', raw);
             }
+            localStorage.setItem('rentados_auth', raw);
           } catch (error) {}
         })();
         """

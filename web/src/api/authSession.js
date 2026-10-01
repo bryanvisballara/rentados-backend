@@ -96,7 +96,12 @@ export async function hydrateSession() {
   if (hydratePromise) return hydratePromise;
 
   hydratePromise = (async () => {
-    const stored = loadSession();
+    restoreNativeAuthFromBackup();
+    let stored = loadSession();
+    if (!stored?.token) {
+      restoreNativeAuthFromBackup();
+      stored = loadSession();
+    }
     if (!stored?.token) {
       clearSession();
       return null;

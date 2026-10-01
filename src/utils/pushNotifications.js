@@ -108,7 +108,12 @@ async function sendFcm(device, payload) {
     await admin.messaging().send({
       token: device.token,
       notification: { title: payload.title, body: payload.body },
-      data: { url: payload.url || '/app' },
+      data: {
+        title: payload.title || 'Rentados',
+        body: payload.body || '',
+        url: payload.url || '/app',
+      },
+      android: { priority: 'high' },
       apns: {
         headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
         payload: {

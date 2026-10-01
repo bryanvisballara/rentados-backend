@@ -34,6 +34,21 @@ html.rentados-native-shell body {
   background: #f5f2ed;
 }
 
+html.rentados-native-shell,
+html.rentados-native-shell body {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html.rentados-native-shell input,
+html.rentados-native-shell textarea,
+html.rentados-native-shell select,
+html.rentados-native-shell [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 html.rentados-native-shell {
   background: #f5f2ed;
   --resident-nav-bar-height: 3rem;
