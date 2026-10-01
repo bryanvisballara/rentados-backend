@@ -2,6 +2,7 @@ const http2 = require('http2');
 const jwt = require('jsonwebtoken');
 const webpush = require('web-push');
 const admin = require('firebase-admin');
+const { getMessaging } = require('firebase-admin/messaging');
 const { PushDevice, Resident, Unit } = require('../models');
 
 const STATUS_COPY = {
@@ -29,13 +30,18 @@ function firebaseConfigured() {
 }
 
 function ensureFirebase() {
-  if (admin.apps.length) return true;
+  const apps = typeof admin.getApps === 'function' ? admin.getApps() : admin.apps || [];
+  if (apps.length) return true;
   if (!firebaseConfigured()) return false;
   const creds = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
   if (typeof creds.private_key === 'string') {
     creds.private_key = creds.private_key.replace(/\\n/g, '\n');
   }
-  admin.initializeApp({ credential: admin.credential.cert(creds) });
+  const cert = typeof admin.cert === 'function' ? admin.cert : admin.credential?.cert;
+  if (typeof cert !== 'function') {
+    throw new Error('firebase-admin no expone cert()');
+  }
+  admin.initializeApp({ credential: cert(creds) });
   return true;
 }
 
@@ -72,7 +78,7 @@ function sendApns(deviceToken, payload) {
   const body = JSON.stringify({
     aps: {
       alert: { title: payload.title, body: payload.body },
-      sound: 'default',
+      sound: 'push_rentados.wav',
     },
     url: payload.url || '/app',
   });
@@ -105,7 +111,7 @@ function sendApns(deviceToken, payload) {
 async function sendFcm(device, payload) {
   if (!ensureFirebase()) return;
   try {
-    await admin.messaging().send({
+    await getMessaging().send({
       token: device.token,
       notification: { title: payload.title, body: payload.body },
       data: {
@@ -113,19 +119,30 @@ async function sendFcm(device, payload) {
         body: payload.body || '',
         url: payload.url || '/app',
       },
-      android: { priority: 'high' },
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'rentados_alerts',
+          sound: 'push_rentados',
+        },
+      },
       apns: {
-        headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
+        headers: {
+          'apns-priority': '10',
+          'apns-push-type': 'alert',
+          'apns-topic': process.env.APNS_BUNDLE_ID || 'com.rentados.app',
+        },
         payload: {
           aps: {
             alert: { title: payload.title, body: payload.body },
-            sound: 'default',
+            sound: 'push_rentados.wav',
           },
         },
       },
     });
   } catch (err) {
     const code = err.code || '';
+    console.error('FCM send failed', device.platform, code, err.message);
     if (
       code === 'messaging/registration-token-not-registered' ||
       code === 'messaging/invalid-registration-token'
@@ -174,7 +191,13 @@ async function sendPushToUsers(userIds, payload) {
   const ids = [...new Set((userIds || []).map((id) => String(id)).filter(Boolean))];
   if (!ids.length) return;
   const devices = await PushDevice.find({ userId: { $in: ids } });
-  await Promise.all(devices.map((device) => sendToDevice(device, payload).catch(() => {})));
+  await Promise.all(
+    devices.map((device) =>
+      sendToDevice(device, payload).catch((err) => {
+        console.error('Push device failed', device.platform, err.code || '', err.message);
+      })
+    )
+  );
 }
 
 async function notifyNewPublication(publication) {

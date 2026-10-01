@@ -11,6 +11,7 @@
 		B10000000000000000000012 /* WebShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* WebShellView.swift */; };
 		B10000000000000000000014 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Assets.xcassets */; };
 		B10000000000000000000015 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* GoogleService-Info.plist */; };
+		B10000000000000000000016 /* push_rentados.wav in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* push_rentados.wav */; };
 		B10000000000000000000021 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000002 /* FirebaseCore */; };
 		B10000000000000000000022 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000003 /* FirebaseMessaging */; };
 /* End PBXBuildFile section */
@@ -22,6 +23,7 @@
 		A10000000000000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A10000000000000000000015 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		A10000000000000000000016 /* push_rentados.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = push_rentados.wav; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -45,6 +47,7 @@
 				A10000000000000000000014 /* Assets.xcassets */,
 				A10000000000000000000013 /* Info.plist */,
 				A10000000000000000000015 /* GoogleService-Info.plist */,
+				A10000000000000000000016 /* push_rentados.wav */,
 			);
 			path = Rentados;
 			sourceTree = "<group>";
@@ -132,6 +135,7 @@
 			files = (
 				B10000000000000000000014 /* Assets.xcassets in Resources */,
 				B10000000000000000000015 /* GoogleService-Info.plist in Resources */,
+				B10000000000000000000016 /* push_rentados.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -199,7 +203,7 @@
 				CODE_SIGN_ENTITLEMENTS = Rentados/Rentados.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 249VW3C887;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Rentados/Info.plist;
@@ -213,7 +217,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rentados.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -228,7 +232,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Rentados/RentadosRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 249VW3C887;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Rentados/Info.plist;
@@ -242,7 +246,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rentados.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

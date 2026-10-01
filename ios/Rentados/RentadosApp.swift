@@ -25,7 +25,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        Messaging.messaging().apnsToken = deviceToken
+        #if DEBUG
+        let tokenType: MessagingAPNSTokenType = .sandbox
+        #else
+        let tokenType: MessagingAPNSTokenType = .prod
+        #endif
+        Messaging.messaging().setAPNSToken(deviceToken, type: tokenType)
         Messaging.messaging().token { token, _ in
             guard let token, !token.isEmpty else { return }
             PushTokenStore.token = token

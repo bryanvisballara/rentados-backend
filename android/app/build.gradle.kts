@@ -24,14 +24,14 @@ fun localProp(name: String, fallback: String): String =
 
 android {
     namespace = "com.rentados.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.rentados.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 5
-        versionName = "1.1"
+        targetSdk = 36
+        versionCode = 9
+        versionName = "1.4"
 
         buildConfigField(
             "String",

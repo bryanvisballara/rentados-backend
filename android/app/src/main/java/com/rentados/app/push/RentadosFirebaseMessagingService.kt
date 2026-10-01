@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -43,6 +45,7 @@ class RentadosFirebaseMessagingService : FirebaseMessagingService() {
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSound(notificationSound(this))
             .setAutoCancel(true)
             .setContentIntent(pending)
             .build()
@@ -50,20 +53,34 @@ class RentadosFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun ensureChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Rentados",
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = "Avisos de paquetes, visitas y novedades del conjunto"
-        }
-        manager.createNotificationChannel(channel)
+        ensureAlertChannel(this)
     }
 
     companion object {
-        const val CHANNEL_ID = "rentados_general"
+        const val CHANNEL_ID = "rentados_alerts"
         const val EXTRA_OPEN_URL = "open_url"
+
+        fun notificationSound(context: Context): Uri =
+            Uri.parse("android.resource://${context.packageName}/${R.raw.push_rentados}")
+
+        fun ensureAlertChannel(context: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Rentados",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Avisos de paquetes, visitas y novedades del conjunto"
+                setSound(
+                    notificationSound(context),
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build(),
+                )
+            }
+            manager.createNotificationChannel(channel)
+        }
     }
 }
