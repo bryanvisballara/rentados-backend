@@ -20,9 +20,20 @@ const {
   getBillingSettings,
   enrichPayment,
   parseAdministrationFee,
+  parseAreaSqm,
+  parseVolumeM3,
+  parseAdministrationFeePerSqm,
+  parseAdministrationFeePerM3,
   getUnitAdministrationFee,
 } = require('../utils/billing');
-const { syncAdministrationCharges } = require('../utils/administrationCharges');
+const {
+  syncAdministrationCharges,
+  bogotaMonth,
+  bogotaMonthBounds,
+  bogotaMonthBoundsFromPeriod,
+  paymentCollectedTotal,
+  periodKey,
+} = require('../utils/administrationCharges');
 const {
   buildAdministrationOutstanding,
   settleAdministrationPayments,
@@ -300,7 +311,9 @@ router.get('/dashboard', async (req, res) => {
     const unitIds = await Unit.find(buildingFilter).distinct('_id');
     const unitFilter = { unitId: { $in: unitIds } };
     const now = new Date();
-    const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const { year, month } = bogotaMonth(now);
+    const currentPeriod = periodKey(year, month);
+    const { start: monthStart, endExclusive: monthEnd } = bogotaMonthBounds(now);
 
     const [
       towers,
@@ -312,6 +325,7 @@ router.get('/dashboard', async (req, res) => {
       parking,
       allPayments,
       monthPayments,
+      recaudoPayments,
     ] = await Promise.all([
       Tower.countDocuments(buildingFilter),
       Unit.countDocuments(buildingFilter),
@@ -322,6 +336,12 @@ router.get('/dashboard', async (req, res) => {
       VisitorParking.countDocuments(buildingFilter),
       Payment.find({ ...orgFilter, ...unitFilter }),
       Payment.find({ ...orgFilter, ...unitFilter, period: currentPeriod }),
+      Payment.find({
+        ...orgFilter,
+        ...unitFilter,
+        status: 'paid',
+        paidAt: { $gte: monthStart, $lt: monthEnd },
+      }),
     ]);
 
     const sum = (items, pick) => items.reduce((acc, p) => acc + pick(p), 0);
@@ -330,10 +350,7 @@ router.get('/dashboard', async (req, res) => {
       allPayments.filter((p) => p.status === 'pending' || p.status === 'overdue'),
       (p) => p.amount - (p.paidAmount || 0)
     );
-    const recaudoMes = sum(
-      monthPayments.filter((p) => p.status === 'paid'),
-      (p) => p.paidAmount || p.amount
-    );
+    const recaudoMes = sum(recaudoPayments, paymentCollectedTotal);
     const morosidadTotal = sum(
       allPayments.filter((p) => p.status === 'overdue'),
       (p) => p.amount - (p.paidAmount || 0)
@@ -469,10 +486,13 @@ router.post('/units', async (req, res) => {
       towerDoc = await Tower.findById(req.body.towerId);
     }
 
-    const administrationFee =
-      parseAdministrationFee(req.body.administrationFee) ??
-      getBillingSettings(organization).defaultAdministrationFee ??
-      undefined;
+    const billingSettings = getBillingSettings(organization);
+    const areaSqm =
+      parseAreaSqm(req.body.areaSqm) ?? parseVolumeM3(req.body.volumeM3);
+    let administrationFee = parseAdministrationFee(req.body.administrationFee);
+    if (administrationFee == null && areaSqm == null) {
+      administrationFee = billingSettings.defaultAdministrationFee ?? undefined;
+    }
 
     const code = parseUnitCode(req.body.code);
 
@@ -485,7 +505,7 @@ router.post('/units', async (req, res) => {
       tower: towerName,
       floor: req.body.floor,
       type: req.body.type || 'apartment',
-      areaSqm: req.body.areaSqm,
+      areaSqm,
       administrationFee,
       adminStatus: req.body.adminStatus || 'current',
     });
@@ -501,7 +521,8 @@ router.post('/units/bulk', async (req, res) => {
     const { building, organization } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
-    const defaultFee = getBillingSettings(organization).defaultAdministrationFee;
+    const billingSettings = getBillingSettings(organization);
+    const defaultFee = billingSettings.defaultAdministrationFee;
 
     const { towerId, units: items } = req.body;
     if (!Array.isArray(items) || !items.length) {
@@ -527,6 +548,13 @@ router.post('/units/bulk', async (req, res) => {
         const floor = parseUnitFloor(item.floor);
         const code = parseUnitCode(item.code);
 
+        const areaSqm =
+          parseAreaSqm(item.areaSqm) ?? parseVolumeM3(item.volumeM3);
+        let administrationFee = parseAdministrationFee(item.administrationFee);
+        if (administrationFee == null && areaSqm == null) {
+          administrationFee = defaultFee ?? undefined;
+        }
+
         const unit = await Unit.create({
           organizationId: building.organizationId,
           buildingId: building._id,
@@ -536,9 +564,8 @@ router.post('/units/bulk', async (req, res) => {
           code: code || undefined,
           floor,
           type: item.type || 'apartment',
-          areaSqm: item.areaSqm,
-          administrationFee:
-            parseAdministrationFee(item.administrationFee) ?? defaultFee ?? undefined,
+          areaSqm,
+          administrationFee,
           adminStatus: item.adminStatus || 'current',
         });
         created.push(unit);
@@ -656,6 +683,7 @@ router.post('/units/replicate-tower', async (req, res) => {
           floor: sourceUnit.floor,
           type: sourceUnit.type,
           areaSqm: sourceUnit.areaSqm,
+          volumeM3: sourceUnit.volumeM3,
           administrationFee: sourceUnit.administrationFee,
           adminStatus: 'current',
         });
@@ -731,14 +759,53 @@ router.post('/units/apply-default-fee', async (req, res) => {
     const { building, organization } = await getOrgContext(req.user, req);
     if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
 
-    const defaultFee = getBillingSettings(organization).defaultAdministrationFee;
-    if (defaultFee == null) {
-      return res.status(400).json({ error: 'Configura primero el valor de administración por defecto' });
-    }
+    const billingSettings = getBillingSettings(organization);
+    const rate =
+      billingSettings.administrationFeePerSqm ?? billingSettings.administrationFeePerM3;
+    const defaultFee = billingSettings.defaultAdministrationFee;
 
     const { towerId, overwrite = false } = req.body;
     const filter = { buildingId: building._id };
     if (towerId) filter.towerId = towerId;
+
+    if (rate != null && rate > 0) {
+      const units = await Unit.find(filter);
+      let updated = 0;
+      for (const unit of units) {
+        const hasArea =
+          (unit.areaSqm != null && unit.areaSqm > 0) ||
+          (unit.volumeM3 != null && unit.volumeM3 > 0);
+        if (hasArea) {
+          if (!overwrite && unit.administrationFee == null) continue;
+          if (unit.administrationFee != null || overwrite) {
+            unit.administrationFee = null;
+            await unit.save();
+            updated += 1;
+          }
+          continue;
+        }
+        if (defaultFee == null) continue;
+        if (!overwrite && unit.administrationFee != null) continue;
+        unit.administrationFee = defaultFee;
+        await unit.save();
+        updated += 1;
+      }
+
+      return res.json({
+        updated,
+        mode: 'per_sqm',
+        administrationFeePerSqm: rate,
+        defaultAdministrationFee: defaultFee,
+        towerId: towerId || null,
+      });
+    }
+
+    if (defaultFee == null) {
+      return res.status(400).json({
+        error: 'Configura la tarifa por m² o un valor fijo por defecto en Morosidad y cartera',
+      });
+    }
+
     if (!overwrite) {
       filter.$or = [{ administrationFee: null }, { administrationFee: { $exists: false } }];
     }
@@ -747,9 +814,55 @@ router.post('/units/apply-default-fee', async (req, res) => {
 
     res.json({
       updated: result.modifiedCount,
+      mode: 'flat_default',
       defaultAdministrationFee: defaultFee,
       towerId: towerId || null,
     });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/units/bulk-update', async (req, res) => {
+  try {
+    const { building } = await getOrgContext(req.user, req);
+    if (!building) return res.status(400).json({ error: 'No hay conjunto configurado' });
+
+    const { unitIds, updates: rawUpdates } = req.body;
+    if (!Array.isArray(unitIds) || unitIds.length === 0) {
+      return res.status(400).json({ error: 'Indica al menos una unidad' });
+    }
+    if (!rawUpdates || typeof rawUpdates !== 'object') {
+      return res.status(400).json({ error: 'Indica los campos a actualizar' });
+    }
+
+    const allowed = ['areaSqm', 'administrationFee', 'adminStatus', 'floor', 'type'];
+    const updates = Object.fromEntries(
+      Object.entries(rawUpdates).filter(([key]) => allowed.includes(key))
+    );
+    if (updates.areaSqm !== undefined) {
+      updates.areaSqm =
+        updates.areaSqm === null || updates.areaSqm === ''
+          ? null
+          : parseAreaSqm(updates.areaSqm);
+    }
+    if (updates.administrationFee !== undefined) {
+      updates.administrationFee =
+        updates.administrationFee === null || updates.administrationFee === ''
+          ? null
+          : parseAdministrationFee(updates.administrationFee);
+    }
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ error: 'No hay campos válidos para actualizar' });
+    }
+
+    const ids = unitIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const result = await Unit.updateMany(
+      { _id: { $in: ids }, buildingId: building._id },
+      { $set: updates }
+    );
+
+    res.json({ updated: result.modifiedCount, matched: result.matchedCount });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -765,6 +878,7 @@ router.patch('/units/:id', async (req, res) => {
       'floor',
       'type',
       'areaSqm',
+      'volumeM3',
       'administrationFee',
       'adminStatus',
       'isActive',
@@ -772,6 +886,12 @@ router.patch('/units/:id', async (req, res) => {
     const updates = Object.fromEntries(
       Object.entries(req.body).filter(([key]) => allowed.includes(key))
     );
+    if (updates.areaSqm !== undefined) {
+      updates.areaSqm =
+        updates.areaSqm === null || updates.areaSqm === ''
+          ? null
+          : parseAreaSqm(updates.areaSqm);
+    }
     if (updates.administrationFee !== undefined) {
       updates.administrationFee =
         updates.administrationFee === null || updates.administrationFee === ''
@@ -1626,6 +1746,26 @@ router.patch('/billing-settings', async (req, res) => {
         : current.autoSuspension,
     };
 
+    if (rest.administrationFeePerSqm !== undefined) {
+      billing.administrationFeePerSqm =
+        rest.administrationFeePerSqm === null || rest.administrationFeePerSqm === ''
+          ? null
+          : parseAdministrationFeePerSqm(rest.administrationFeePerSqm);
+      billing.administrationFeePerM3 = billing.administrationFeePerSqm;
+    } else if (rest.administrationFeePerM3 !== undefined) {
+      billing.administrationFeePerM3 =
+        rest.administrationFeePerM3 === null || rest.administrationFeePerM3 === ''
+          ? null
+          : parseAdministrationFeePerM3(rest.administrationFeePerM3);
+      billing.administrationFeePerSqm = billing.administrationFeePerM3;
+    }
+    if (rest.defaultAdministrationFee !== undefined) {
+      billing.defaultAdministrationFee =
+        rest.defaultAdministrationFee === null || rest.defaultAdministrationFee === ''
+          ? null
+          : parseAdministrationFee(rest.defaultAdministrationFee);
+    }
+
     organization.settings = organization.settings || {};
     organization.settings.billing = billing;
     organization.markModified('settings.billing');
@@ -2041,8 +2181,11 @@ router.get('/cartera', async (req, res) => {
     const billingSettings = getBillingSettings(organization);
 
     const now = new Date();
-    const currentPeriod =
-      periodQuery || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const { year, month } = bogotaMonth(now);
+    const currentPeriod = periodQuery || periodKey(year, month);
+    const recaudoBounds = periodQuery
+      ? bogotaMonthBoundsFromPeriod(periodQuery)
+      : bogotaMonthBounds(now);
 
     const populateOpts = { path: 'unitId', select: 'number type tower adminStatus code' };
 
@@ -2074,8 +2217,11 @@ router.get('/cartera', async (req, res) => {
           payments = await Payment.find(filter).populate(populateOpts).sort({ dueDate: -1 });
           break;
         case 'recaudo':
-          filter = { ...orgFilter, period: currentPeriod, status: 'paid' };
-          applyDueDateRange(filter);
+          filter = {
+            ...orgFilter,
+            status: 'paid',
+            paidAt: { $gte: recaudoBounds.start, $lt: recaudoBounds.endExclusive },
+          };
           payments = await Payment.find(filter).populate(populateOpts).sort({ paidAt: -1, dueDate: -1 });
           break;
         case 'morosidad':
@@ -2108,15 +2254,17 @@ router.get('/cartera', async (req, res) => {
       if (view === 'cartera-actual' || view === 'morosidad' || view === 'pendiente') {
         detailTotal = sum(enriched, (p) => p.amount - (p.paidAmount || 0));
       } else if (view === 'recaudo') {
-        detailTotal = sum(enriched, (p) => p.paidAmount || p.amount);
+        detailTotal = sum(enriched, paymentCollectedTotal);
       } else if (view === 'facturado') {
         detailTotal = sum(enriched, (p) => p.amount);
       } else if (view === 'tasa-recaudo') {
         const facturadoMes = sum(enriched, (p) => p.amount);
-        const recaudoMes = sum(
-          enriched.filter((p) => p.status === 'paid'),
-          (p) => p.paidAmount || p.amount
-        );
+        const recaudoRows = await Payment.find({
+          ...orgFilter,
+          status: 'paid',
+          paidAt: { $gte: recaudoBounds.start, $lt: recaudoBounds.endExclusive },
+        });
+        const recaudoMes = sum(recaudoRows, paymentCollectedTotal);
         const pendienteMes = sum(
           enriched.filter((p) => p.status === 'pending'),
           (p) => p.amount - (p.paidAmount || 0)

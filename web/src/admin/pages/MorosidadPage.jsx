@@ -75,6 +75,7 @@ export default function MorosidadPage() {
   const selectAllRef = useRef(null);
   const selectAllFacilitiesRef = useRef(null);
   const [billing, setBilling] = useState({
+    administrationFeePerSqm: '',
     defaultAdministrationFee: '',
     monthlyInterestRatePercent: 1.5,
     gracePeriodDays: 5,
@@ -125,6 +126,8 @@ export default function MorosidadPage() {
 
     setBilling(normalizeBilling({
       ...settings.billing,
+      administrationFeePerSqm:
+        settings.billing.administrationFeePerSqm ?? settings.billing.administrationFeePerM3 ?? '',
       defaultAdministrationFee: settings.billing.defaultAdministrationFee ?? '',
     }));
     setOverdueRows(buildOverdueRows(unitsData.units, cartera.payments));
@@ -155,19 +158,32 @@ export default function MorosidadPage() {
   async function saveAdminFee(e) {
     e.preventDefault();
     try {
+      const perSqm =
+        billing.administrationFeePerSqm === '' || billing.administrationFeePerSqm == null
+          ? null
+          : Number(billing.administrationFeePerSqm);
+      const flatDefault =
+        billing.defaultAdministrationFee === '' || billing.defaultAdministrationFee == null
+          ? null
+          : Number(billing.defaultAdministrationFee);
+
+      if (perSqm == null && flatDefault == null) {
+        setError('Indica la tarifa por m² o un valor fijo de respaldo para unidades sin área.');
+        return;
+      }
+
       const data = await adminApi.billing.updateSettings({
-        defaultAdministrationFee:
-          billing.defaultAdministrationFee === '' ||
-          billing.defaultAdministrationFee == null
-            ? null
-            : Number(billing.defaultAdministrationFee),
+        administrationFeePerSqm: perSqm,
+        defaultAdministrationFee: flatDefault,
       });
       setBilling((prev) => ({
         ...data.billing,
         autoSuspension: prev.autoSuspension,
+        administrationFeePerSqm:
+          data.billing.administrationFeePerSqm ?? data.billing.administrationFeePerM3 ?? '',
         defaultAdministrationFee: data.billing.defaultAdministrationFee ?? '',
       }));
-      setSaved('Valor de administración guardado');
+      setSaved('Tarifa de administración guardada');
       setTimeout(() => setSaved(''), 3000);
     } catch (err) {
       setError(err.message);
@@ -418,12 +434,26 @@ export default function MorosidadPage() {
       <div className="admin-card">
         <h2>Valor de administración</h2>
         <p className="admin-empty" style={{ marginTop: 0 }}>
-          Cuota mensual base del conjunto. Las unidades nuevas la heredan automáticamente; puedes
-          personalizarla por apartamento en Torres y unidades.
+          La cuota mensual de cada apartamento es <strong>metros cuadrados (m²) × tarifa</strong>.
+          Registra el área de cada unidad en Torres y unidades. Unidades sin m² pueden usar el valor
+          fijo de respaldo.
         </p>
-        <form className="admin-form" onSubmit={saveAdminFee}>
+        <form className="admin-form admin-form--register-payment" onSubmit={saveAdminFee}>
           <label>
-            Cuota mensual por defecto (COP)
+            Tarifa por m² (COP)
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={billing.administrationFeePerSqm ?? ''}
+              onChange={(e) =>
+                setBilling({ ...billing, administrationFeePerSqm: e.target.value })
+              }
+              placeholder="Ej: 3500"
+            />
+          </label>
+          <label>
+            Valor fijo de respaldo (COP)
             <input
               type="number"
               min="0"
@@ -432,11 +462,17 @@ export default function MorosidadPage() {
               onChange={(e) =>
                 setBilling({ ...billing, defaultAdministrationFee: e.target.value })
               }
-              placeholder="Ej: 420000"
+              placeholder="Solo unidades sin m²"
             />
           </label>
-          <button type="submit" className="admin-btn">
-            Guardar valor
+          {billing.administrationFeePerSqm > 0 && (
+            <p className="admin-muted admin-form__wide" style={{ margin: 0 }}>
+              Ejemplo: apartamento de 120 m² →{' '}
+              {formatCop(Math.round(Number(billing.administrationFeePerSqm) * 120))} / mes
+            </p>
+          )}
+          <button type="submit" className="admin-btn admin-form__submit">
+            Guardar tarifa
           </button>
         </form>
       </div>
@@ -490,8 +526,19 @@ export default function MorosidadPage() {
         </form>
         <p className="admin-empty" style={{ marginTop: '0.75rem' }}>
           Ejemplo: administración de{' '}
-          {formatCop(billing.defaultAdministrationFee || 420000)} con 1 mes de mora al 1.5% → interés ≈{' '}
-          {formatCop(Math.round((billing.defaultAdministrationFee || 420000) * 0.015))}
+          {formatCop(
+            billing.administrationFeePerSqm > 0
+              ? Math.round(Number(billing.administrationFeePerSqm) * 120)
+              : billing.defaultAdministrationFee || 420000
+          )}{' '}
+          con 1 mes de mora al 1.5% → interés ≈{' '}
+          {formatCop(
+            Math.round(
+              (billing.administrationFeePerSqm > 0
+                ? Math.round(Number(billing.administrationFeePerSqm) * 120)
+                : billing.defaultAdministrationFee || 420000) * 0.015
+            )
+          )}
         </p>
       </div>
 

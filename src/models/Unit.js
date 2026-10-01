@@ -34,7 +34,10 @@ const unitSchema = new mongoose.Schema(
       enum: ['current', 'pending', 'overdue'],
       default: 'current',
     },
-    areaSqm: { type: Number },
+    /** Metros cuadrados; con administrationFeePerSqm define la cuota mensual. */
+    areaSqm: { type: Number, min: 0 },
+    volumeM3: { type: Number, min: 0 },
+    /** Cuota fija mensual (COP); solo si no aplica tarifa × m³ o como excepción manual. */
     administrationFee: { type: Number, min: 0 },
     isActive: { type: Boolean, default: true },
   },

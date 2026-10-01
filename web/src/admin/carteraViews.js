@@ -5,7 +5,7 @@ export const CARTERA_VIEWS = {
   },
   recaudo: {
     label: 'Recaudo del mes',
-    description: 'Pagos recibidos en el periodo seleccionado.',
+    description: 'Dinero cobrado en el mes calendario (según fecha de pago), incluye cuotas de meses anteriores.',
   },
   morosidad: {
     label: 'Morosidad total',

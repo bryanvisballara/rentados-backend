@@ -32,6 +32,30 @@ function dueDateForPeriod(period) {
   return new Date(Date.UTC(year, month - 1, 1, 5, 0, 0));
 }
 
+/** Inicio inclusive y fin exclusive del mes calendario en America/Bogota (para recaudo por paidAt). */
+function bogotaMonthBounds(asOf = new Date()) {
+  const { year, month } = bogotaMonth(asOf);
+  const start = dueDateForPeriod(periodKey(year, month));
+  const next = shiftMonth(year, month, 1);
+  const endExclusive = dueDateForPeriod(periodKey(next.year, next.month));
+  return { start, endExclusive, periodKey: periodKey(year, month) };
+}
+
+function bogotaMonthBoundsFromPeriod(period) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(period || ''));
+  if (!match) return bogotaMonthBounds();
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const start = dueDateForPeriod(periodKey(year, month));
+  const next = shiftMonth(year, month, 1);
+  const endExclusive = dueDateForPeriod(periodKey(next.year, next.month));
+  return { start, endExclusive, periodKey: periodKey(year, month) };
+}
+
+function paymentCollectedTotal(payment) {
+  return Number(payment.paidAmount || payment.amount || 0) + Number(payment.interestAmount || 0);
+}
+
 function monthsBetween(start, end) {
   const periods = [];
   let cursor = { ...start };
@@ -166,4 +190,8 @@ module.exports = {
   refreshUnitAdminStatus,
   dueDateForPeriod,
   bogotaMonth,
+  bogotaMonthBounds,
+  bogotaMonthBoundsFromPeriod,
+  paymentCollectedTotal,
+  periodKey,
 };

@@ -1,26 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import FacilityCalendar, { addDays, startOfWeek } from '../../components/FacilityCalendar';
-import { adminApi, formatCop, formatDateTime } from '../../api/client';
+import FacilityBookingForm from '../../components/FacilityBookingForm';
+import { adminApi, formatCop, formatDateTime, formatTime } from '../../api/client';
 import ResidentSelectField from '../components/ResidentSelectField';
-import { formatOpenHoursRange, resolveFacilityCalendarOpenHours } from '../../utils/openHours';
+import { addMonths, startOfMonth } from '../../utils/facilityBookingSlots';
 import '../admin.css';
-import '../../components/FacilityCalendar.css';
-
-const emptyBookingForm = {
-  residentId: '',
-  startAt: '',
-  endAt: '',
-  blockIndex: '',
-  notes: '',
-};
-
-function toLocalInputValue(date) {
-  const d = new Date(date);
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - offset * 60000);
-  return local.toISOString().slice(0, 16);
-}
+import '../../components/FacilityBookingForm.css';
 
 function getPricingMode(facility) {
   return facility?.bookingPricing?.mode || 'free';
@@ -31,28 +16,52 @@ export default function FacilityBookingsPage() {
   const [residents, setResidents] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [facilityId, setFacilityId] = useState('');
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [error, setError] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [residentId, setResidentId] = useState('');
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState(emptyBookingForm);
+
+  const monthRange = useMemo(() => {
+    const from = startOfMonth(calendarMonth);
+    const to = addMonths(from, 1);
+    to.setMilliseconds(to.getMilliseconds() - 1);
+    return { from, to };
+  }, [calendarMonth]);
 
   const selectedFacility = useMemo(
     () => facilities.find((f) => String(f._id) === String(facilityId)),
     [facilities, facilityId]
   );
 
-  const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart]);
+  const pricingMode = getPricingMode(selectedFacility);
+  const blocks = selectedFacility?.bookingPricing?.blocks || [];
 
-  async function loadFacilities() {
+  const serviceRequiresPayment = useMemo(() => {
+    const p = selectedFacility?.bookingPricing;
+    if (p?.mode === 'hourly') return Number(p.hourlyRate) > 0;
+    if (p?.mode === 'flat') return Number(p.flatPrice) > 0;
+    if (p?.mode === 'blocks') return (p.blocks || []).some((b) => Number(b.price) > 0);
+    if (p?.mode === 'free') return false;
+    return false;
+  }, [selectedFacility]);
+
+  async function loadFacilitiesAndBookings(currentFacilityId = facilityId) {
     const params = {
-      from: weekStart.toISOString(),
-      to: weekEnd.toISOString(),
+      from: monthRange.from.toISOString(),
+      to: monthRange.to.toISOString(),
     };
+    if (currentFacilityId) params.facilityId = currentFacilityId;
+
     const data = await adminApi.facilityBookings.list(params);
     const bookable = data.facilities || [];
     setFacilities(bookable);
-    if (!facilityId && bookable[0]) {
+    if (!currentFacilityId && bookable[0]) {
       setFacilityId(String(bookable[0]._id));
+    }
+    if (currentFacilityId) {
+      setBookings(data.bookings || []);
     }
   }
 
@@ -61,60 +70,59 @@ export default function FacilityBookingsPage() {
     setResidents(data.residents || []);
   }
 
-  async function loadBookings(currentFacilityId = facilityId) {
-    if (!currentFacilityId) {
-      setBookings([]);
+  useEffect(() => {
+    loadResidents().catch((err) => setError(err.message));
+  }, []);
+
+  useEffect(() => {
+    loadFacilitiesAndBookings(facilityId || undefined).catch((err) => setError(err.message));
+  }, [monthRange.from.getTime(), facilityId]);
+
+  async function handleCreateBooking({ startAt, blockIndex, notes }) {
+    setCreateError('');
+    setError('');
+
+    if (!residentId) {
+      setCreateError('Selecciona el residente de la reserva.');
       return;
     }
-    const data = await adminApi.facilityBookings.list({
-      facilityId: currentFacilityId,
-      from: weekStart.toISOString(),
-      to: weekEnd.toISOString(),
-    });
-    setBookings(data.bookings || []);
-  }
 
-  useEffect(() => {
-    Promise.all([loadFacilities(), loadResidents()]).catch((err) => setError(err.message));
-  }, [weekStart]);
+    const start = new Date(startAt);
+    if (Number.isNaN(start.getTime())) {
+      setCreateError('Indica una fecha y hora de inicio válidas.');
+      return;
+    }
+    if (start < new Date()) {
+      setCreateError('La hora de inicio debe ser futura.');
+      return;
+    }
+    if (pricingMode === 'blocks' && (blockIndex === undefined || blockIndex === '')) {
+      setCreateError('Selecciona un paquete de horas.');
+      return;
+    }
 
-  useEffect(() => {
-    if (facilityId) loadBookings().catch((err) => setError(err.message));
-  }, [facilityId, weekStart]);
-
-  function openCreate(slotDate) {
-    const start = new Date(slotDate);
     const slotMinutes = selectedFacility?.bookingRules?.slotMinutes || 60;
-    const end = new Date(start.getTime() + slotMinutes * 60000);
+    const end =
+      pricingMode === 'blocks'
+        ? undefined
+        : new Date(start.getTime() + slotMinutes * 60000).toISOString();
 
-    setForm({
-      ...emptyBookingForm,
-      startAt: toLocalInputValue(start),
-      endAt: toLocalInputValue(end),
-    });
-    setModal({ type: 'create' });
-  }
-
-  function openView(event) {
-    setModal({ type: 'view', event });
-  }
-
-  async function handleCreate(e) {
-    e.preventDefault();
+    setSubmitting(true);
     try {
       await adminApi.facilityBookings.create({
         facilityId,
-        residentId: form.residentId,
-        startAt: new Date(form.startAt).toISOString(),
-        endAt: getPricingMode(selectedFacility) === 'blocks' ? undefined : new Date(form.endAt).toISOString(),
-        blockIndex: form.blockIndex === '' ? undefined : Number(form.blockIndex),
-        notes: form.notes,
+        residentId,
+        startAt: start.toISOString(),
+        endAt: end,
+        blockIndex: blockIndex === undefined || blockIndex === '' ? undefined : Number(blockIndex),
+        notes,
       });
-      setModal(null);
-      setForm(emptyBookingForm);
-      await loadBookings();
+      setResidentId('');
+      await loadFacilitiesAndBookings(facilityId);
     } catch (err) {
-      setError(err.message);
+      setCreateError(err.message || 'No se pudo crear la reserva.');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -122,7 +130,7 @@ export default function FacilityBookingsPage() {
     try {
       await adminApi.facilityBookings.update(modal.event.id, { status });
       setModal(null);
-      await loadBookings();
+      await loadFacilitiesAndBookings(facilityId);
     } catch (err) {
       setError(err.message);
     }
@@ -133,14 +141,19 @@ export default function FacilityBookingsPage() {
     try {
       await adminApi.facilityBookings.remove(id);
       setModal(null);
-      await loadBookings();
+      await loadFacilitiesAndBookings(facilityId);
     } catch (err) {
       setError(err.message);
     }
   }
 
-  const pricingMode = getPricingMode(selectedFacility);
-  const blocks = selectedFacility?.bookingPricing?.blocks || [];
+  const upcomingBookings = useMemo(
+    () =>
+      [...bookings]
+        .filter((b) => new Date(b.endAt) >= new Date())
+        .sort((a, b) => new Date(a.startAt) - new Date(b.startAt)),
+    [bookings]
+  );
 
   return (
     <div className="admin-page">
@@ -149,7 +162,10 @@ export default function FacilityBookingsPage() {
           <Link to="/admin/servicios">Servicios del conjunto</Link> / Reservas
         </p>
         <h1>Calendario de reservas</h1>
-        <p>Disponibilidad y reservas de salón social, BBQ, sauna y demás espacios por hora o paquetes.</p>
+        <p>
+          Elige fecha y hora como en la app de residentes. Las reservas creadas aquí quedan confirmadas para el
+          residente.
+        </p>
       </header>
 
       {error && <div className="admin-error">{error}</div>}
@@ -167,114 +183,83 @@ export default function FacilityBookingsPage() {
               ))}
             </select>
           </label>
-
-          <div className="admin-actions">
-            <button type="button" className="admin-btn admin-btn--ghost" onClick={() => setWeekStart(addDays(weekStart, -7))}>
-              ← Semana anterior
-            </button>
-            <button type="button" className="admin-btn admin-btn--ghost" onClick={() => setWeekStart(startOfWeek(new Date()))}>
-              Hoy
-            </button>
-            <button type="button" className="admin-btn admin-btn--ghost" onClick={() => setWeekStart(addDays(weekStart, 7))}>
-              Semana siguiente →
-            </button>
-          </div>
         </div>
 
-        {selectedFacility && (
-          <p style={{ margin: '0 0 1rem', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-            Horario {formatOpenHoursRange(selectedFacility.openHours, selectedFacility.open24Hours)}
-            {pricingMode === 'hourly' && selectedFacility.bookingPricing?.hourlyRate > 0 && (
-              <> · {formatCop(selectedFacility.bookingPricing.hourlyRate)}/hora</>
-            )}
-            {pricingMode === 'blocks' && blocks.length > 0 && (
-              <> · Paquetes: {blocks.map((b) => `${b.label} (${formatCop(b.price)})`).join(', ')}</>
-            )}
-          </p>
-        )}
-
-        {facilityId ? (
-          <FacilityCalendar
-            weekStart={weekStart}
+        {facilityId && selectedFacility ? (
+          <FacilityBookingForm
+            key={facilityId}
             facility={selectedFacility}
-            openHours={resolveFacilityCalendarOpenHours(selectedFacility)}
-            slotMinutes={selectedFacility?.bookingRules?.slotMinutes || 60}
             events={bookings}
-            onSelectSlot={openCreate}
-            onSelectEvent={openView}
+            slotMinutes={selectedFacility?.bookingRules?.slotMinutes || 60}
+            capacity={selectedFacility?.capacity || 1}
+            pricingMode={pricingMode}
+            blocks={blocks}
+            serviceRequiresPayment={serviceRequiresPayment}
+            requiresApproval={Boolean(selectedFacility?.requiresApproval)}
+            submitting={submitting}
+            submitError={createError}
+            onSubmit={handleCreateBooking}
+            onMonthChange={setCalendarMonth}
+            confirmStepTitle="3. Confirma la reserva"
+            submitLabel="Crear reserva"
+            showPaymentHints={false}
+            confirmExtra={
+              <label className="facility-book__field admin-unit-picker-field">
+                <span>Residente</span>
+                <ResidentSelectField
+                  residents={residents}
+                  value={residentId}
+                  onChange={setResidentId}
+                  required
+                />
+              </label>
+            }
           />
         ) : (
           <p className="admin-empty">
             Marca un servicio como reservable en{' '}
-            <Link to="/admin/servicios">Servicios del conjunto</Link> para ver su calendario.
+            <Link to="/admin/servicios">Servicios del conjunto</Link> para reservar.
           </p>
         )}
       </div>
 
-      {modal?.type === 'create' && (
-        <div className="admin-modal-overlay" onClick={() => setModal(null)}>
-          <div className="admin-modal admin-modal--wide" onClick={(e) => e.stopPropagation()}>
-            <h2>Nueva reserva</h2>
-            <form className="admin-form" onSubmit={handleCreate}>
-              <label className="admin-unit-picker-field">
-                Residente
-                <ResidentSelectField
-                  key={form.startAt}
-                  residents={residents}
-                  value={form.residentId}
-                  onChange={(residentId) => setForm({ ...form, residentId })}
-                  required
-                />
-              </label>
-              <label>
-                Inicio
-                <input
-                  type="datetime-local"
-                  value={form.startAt}
-                  onChange={(e) => setForm({ ...form, startAt: e.target.value })}
-                  required
-                />
-              </label>
-              {pricingMode === 'blocks' ? (
-                <label>
-                  Paquete de horas
-                  <select
-                    value={form.blockIndex}
-                    onChange={(e) => setForm({ ...form, blockIndex: e.target.value })}
-                    required
+      {facilityId && upcomingBookings.length > 0 && (
+        <div className="admin-card">
+          <h2 style={{ marginTop: 0 }}>Próximas reservas (mes visible)</h2>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Reserva</th>
+                  <th>Horario</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {upcomingBookings.map((b) => (
+                  <tr
+                    key={b.id}
+                    role="button"
+                    tabIndex={0}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setModal({ type: 'view', event: b })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setModal({ type: 'view', event: b });
+                      }
+                    }}
                   >
-                    <option value="">Seleccionar…</option>
-                    {blocks.map((block, index) => (
-                      <option key={block.label} value={index}>
-                        {block.label} · {Math.round(block.durationMinutes / 60)} h · {formatCop(block.price)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <label>
-                  Fin
-                  <input
-                    type="datetime-local"
-                    value={form.endAt}
-                    onChange={(e) => setForm({ ...form, endAt: e.target.value })}
-                    required
-                  />
-                </label>
-              )}
-              <label style={{ gridColumn: '1 / -1' }}>
-                Notas
-                <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-              </label>
-              <div className="admin-actions">
-                <button type="submit" className="admin-btn">
-                  Reservar
-                </button>
-                <button type="button" className="admin-btn admin-btn--ghost" onClick={() => setModal(null)}>
-                  Cancelar
-                </button>
-              </div>
-            </form>
+                    <td>{b.title || selectedFacility?.name || 'Reserva'}</td>
+                    <td>
+                      {formatDateTime(b.startAt)} – {formatTime(b.endAt)}
+                      {b.totalPrice > 0 && ` · ${formatCop(b.totalPrice)}`}
+                    </td>
+                    <td>{b.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -284,8 +269,7 @@ export default function FacilityBookingsPage() {
           <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
             <h2>{modal.event.title}</h2>
             <p>
-              {formatDateTime(modal.event.startAt)} –{' '}
-              {formatDateTime(modal.event.endAt)}
+              {formatDateTime(modal.event.startAt)} – {formatDateTime(modal.event.endAt)}
             </p>
             <p>
               Estado: <strong>{modal.event.status}</strong>

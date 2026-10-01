@@ -28,6 +28,9 @@ const organizationSchema = new mongoose.Schema(
           autoLiftWhenPaid: { type: Boolean, default: true },
         },
         defaultAdministrationFee: { type: Number, min: 0 },
+        /** COP por m²; cuota mensual = areaSqm × tarifa. */
+        administrationFeePerSqm: { type: Number, min: 0 },
+        administrationFeePerM3: { type: Number, min: 0 },
       },
       locker: {
         enabled: { type: Boolean, default: false },

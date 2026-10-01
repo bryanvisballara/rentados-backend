@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { adminApi, formatCop } from '../../api/client';
+import {
+  administrationFeePerSqmRate,
+  getUnitAdministrationFee,
+} from '../../utils/administrationFee';
 import '../admin.css';
 
 const emptyTower = { name: '', code: '', floors: '' };
@@ -9,6 +13,7 @@ const emptyUnit = {
   type: 'apartment',
   towerId: '',
   floor: '',
+  areaSqm: '',
   administrationFee: '',
   adminStatus: 'current',
 };
@@ -19,6 +24,7 @@ function createBulkRow(overrides = {}) {
     number: '',
     code: '',
     floor: '',
+    areaSqm: '',
     administrationFee: '',
     type: 'apartment',
     adminStatus: 'current',
@@ -46,6 +52,7 @@ function unitToBulkRow(unit) {
     number: unit.number,
     code: unit.code ?? '',
     floor: unit.floor ?? '',
+    areaSqm: unit.areaSqm ?? unit.volumeM3 ?? '',
     administrationFee: unit.administrationFee ?? '',
     type: unit.type,
     adminStatus: unit.adminStatus,
@@ -66,6 +73,13 @@ function parseBulkAdminFee(value) {
   const parsed = Number(String(value).replace(/\s/g, ''));
   if (!Number.isFinite(parsed) || parsed < 0) return { ok: false, value: undefined };
   return { ok: true, value: Math.round(parsed) };
+}
+
+function parseBulkAreaSqm(value) {
+  if (value === '' || value == null) return { ok: true, value: undefined };
+  const parsed = Number(String(value).replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(parsed) || parsed < 0) return { ok: false, value: undefined };
+  return { ok: true, value: Math.round(parsed * 1000) / 1000 };
 }
 
 function buildBulkRows(towerId, allUnits) {
@@ -95,9 +109,27 @@ export default function TowersPage() {
   const replicateSelectAllRef = useRef(null);
   const [editingTowerId, setEditingTowerId] = useState(null);
   const [editingUnitId, setEditingUnitId] = useState(null);
+  const [billingSettings, setBillingSettings] = useState({
+    administrationFeePerSqm: null,
+    defaultAdministrationFee: null,
+  });
+  const bulkSelectAllRef = useRef(null);
+  const [selectedUnitIds, setSelectedUnitIds] = useState([]);
+  const [massEdit, setMassEdit] = useState({
+    areaSqm: '',
+    administrationFee: '',
+    adminStatus: '',
+    clearFixedFee: false,
+  });
+  const [applyingMassEdit, setApplyingMassEdit] = useState(false);
 
   async function load() {
-    const [t, u] = await Promise.all([adminApi.towers.list(), adminApi.units.list()]);
+    const [t, u, billing] = await Promise.all([
+      adminApi.towers.list(),
+      adminApi.units.list(),
+      adminApi.billing.getSettings(),
+    ]);
+    setBillingSettings(billing.billing || {});
     setTowers(t.towers);
     setUnits(u.units);
   }
@@ -139,6 +171,8 @@ export default function TowersPage() {
         towerId: unitForm.towerId || null,
         floor: unitForm.floor ? Number(unitForm.floor) : undefined,
         code: unitForm.code.trim() || undefined,
+        areaSqm:
+          unitForm.areaSqm === '' ? null : parseBulkAreaSqm(unitForm.areaSqm).value,
         administrationFee:
           unitForm.administrationFee === ''
             ? null
@@ -187,22 +221,33 @@ export default function TowersPage() {
         setError(`Piso inválido en la unidad ${row.number || 'sin número'}`);
         return;
       }
-      const parsedFee = parseBulkAdminFee(row.administrationFee);
-      if (!parsedFee.ok) {
-        setError(`Valor de administración inválido en la unidad ${row.number || 'sin número'}`);
+      const parsedArea = parseBulkAreaSqm(row.areaSqm);
+      if (!parsedArea.ok) {
+        setError(`Área (m²) inválida en la unidad ${row.number || 'sin número'}`);
         return;
       }
-      payload.push({ row, floor: parsedFloor.value, administrationFee: parsedFee.value });
+      const parsedFee = parseBulkAdminFee(row.administrationFee);
+      if (!parsedFee.ok) {
+        setError(`Cuota fija inválida en la unidad ${row.number || 'sin número'}`);
+        return;
+      }
+      payload.push({
+        row,
+        floor: parsedFloor.value,
+        areaSqm: parsedArea.value,
+        administrationFee: parsedFee.value,
+      });
     }
 
     setSavingBulk(true);
     try {
       const data = await adminApi.units.bulkCreate({
         towerId: bulkTowerId || null,
-        units: payload.map(({ row, floor, administrationFee }) => ({
+        units: payload.map(({ row, floor, areaSqm, administrationFee }) => ({
           number: row.number.trim(),
           code: row.code.trim() || undefined,
           floor,
+          areaSqm,
           administrationFee,
           type: row.type,
           adminStatus: row.adminStatus,
@@ -267,8 +312,10 @@ export default function TowersPage() {
       const data = await adminApi.units.applyDefaultFee({ towerId: bulkTowerId, overwrite });
       setSuccess(
         data.updated
-          ? `${data.updated} unidad(es) actualizada(s) con ${formatCop(data.defaultAdministrationFee)}.`
-          : 'Todas las unidades de esta torre ya tienen valor asignado.'
+          ? data.mode === 'per_sqm'
+            ? `${data.updated} unidad(es) actualizada(s) según tarifa ${formatCop(data.administrationFeePerSqm || administrationFeePerSqmRate(billingSettings))}/m².`
+            : `${data.updated} unidad(es) actualizada(s) con ${formatCop(data.defaultAdministrationFee)}.`
+          : 'No hubo cambios en las unidades de esta torre.'
       );
       await load();
     } catch (err) {
@@ -295,6 +342,7 @@ export default function TowersPage() {
       type: unit.type,
       towerId: unit.towerId?._id || unit.towerId || '',
       floor: unit.floor ?? '',
+      areaSqm: unit.areaSqm ?? unit.volumeM3 ?? '',
       administrationFee: unit.administrationFee ?? '',
       adminStatus: unit.adminStatus,
     });
@@ -396,6 +444,93 @@ export default function TowersPage() {
   const selectedBulkTower = towers.find((t) => t._id === bulkTowerId);
   const existingBulkCount = bulkRows.filter((row) => row.existing).length;
   const newBulkCount = bulkRows.filter((row) => !row.existing && row.number.trim()).length;
+  const existingUnitIds = useMemo(
+    () => bulkRows.filter((row) => row.existing && row.unitId).map((row) => row.unitId),
+    [bulkRows]
+  );
+  const selectedSet = useMemo(() => new Set(selectedUnitIds), [selectedUnitIds]);
+  const allExistingSelected =
+    existingUnitIds.length > 0 && existingUnitIds.every((id) => selectedSet.has(id));
+  const someExistingSelected = selectedUnitIds.length > 0 && !allExistingSelected;
+  const sqmRate = administrationFeePerSqmRate(billingSettings);
+
+  useEffect(() => {
+    setSelectedUnitIds([]);
+    setMassEdit({ areaSqm: '', administrationFee: '', adminStatus: '', clearFixedFee: false });
+  }, [bulkTowerId]);
+
+  useEffect(() => {
+    if (bulkSelectAllRef.current) {
+      bulkSelectAllRef.current.indeterminate = someExistingSelected;
+    }
+  }, [someExistingSelected]);
+
+  function toggleSelectAllExisting() {
+    if (allExistingSelected) {
+      setSelectedUnitIds([]);
+      return;
+    }
+    setSelectedUnitIds([...existingUnitIds]);
+  }
+
+  function toggleUnitSelected(unitId) {
+    setSelectedUnitIds((prev) =>
+      prev.includes(unitId) ? prev.filter((id) => id !== unitId) : [...prev, unitId]
+    );
+  }
+
+  async function applyMassEditToSelected() {
+    if (selectedUnitIds.length === 0) {
+      setError('Marca al menos una unidad de la torre.');
+      return;
+    }
+
+    const updates = {};
+    if (massEdit.areaSqm !== '') {
+      const parsed = parseBulkAreaSqm(massEdit.areaSqm);
+      if (!parsed.ok) {
+        setError('Área (m²) inválida en edición masiva.');
+        return;
+      }
+      updates.areaSqm = parsed.value;
+      if (massEdit.administrationFee === '' && sqmRate > 0) {
+        updates.administrationFee = null;
+      }
+    }
+    if (massEdit.administrationFee !== '') {
+      const parsedFee = parseBulkAdminFee(massEdit.administrationFee);
+      if (!parsedFee.ok) {
+        setError('Cuota fija inválida en edición masiva.');
+        return;
+      }
+      updates.administrationFee = parsedFee.value;
+    } else if (massEdit.clearFixedFee) {
+      updates.administrationFee = null;
+    }
+    if (massEdit.adminStatus) {
+      updates.adminStatus = massEdit.adminStatus;
+    }
+
+    if (!Object.keys(updates).length) {
+      setError('Indica al menos un campo en la fila de edición masiva.');
+      return;
+    }
+
+    setApplyingMassEdit(true);
+    setError('');
+    setSuccess('');
+    try {
+      const data = await adminApi.units.bulkUpdate({ unitIds: selectedUnitIds, updates });
+      setSuccess(`${data.updated} unidad(es) actualizada(s).`);
+      setMassEdit({ areaSqm: '', administrationFee: '', adminStatus: '', clearFixedFee: false });
+      setSelectedUnitIds([]);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setApplyingMassEdit(false);
+    }
+  }
 
   const sourceUnits = useMemo(
     () => getUnitsForTower(replicateSourceId, units),
@@ -487,9 +622,15 @@ export default function TowersPage() {
         {!editingUnitId ? (
           <>
             <p className="admin-empty" style={{ marginTop: 0 }}>
-              Selecciona una torre para ver sus unidades y agregar filas nuevas al final. Para cambiar una
-              unidad registrada usa Editar en la columna Acciones.
+              La cuota mensual es <strong>m² × tarifa del conjunto</strong> (Morosidad y cartera). Marca las
+              unidades y usa la primera fila para aplicar cambios a todas. La cuota fija solo aplica como
+              excepción.
             </p>
+            {sqmRate > 0 && (
+              <p className="admin-muted" style={{ marginTop: '0.5rem' }}>
+                Tarifa actual: {formatCop(sqmRate)} / m²
+              </p>
+            )}
             <form onSubmit={saveBulkUnits}>
               <div className="admin-form" style={{ marginTop: '1rem' }}>
                 <label>
@@ -530,10 +671,22 @@ export default function TowersPage() {
                 <table className="admin-table">
                   <thead>
                     <tr>
+                      <th className="admin-table__check">
+                        <input
+                          ref={bulkSelectAllRef}
+                          type="checkbox"
+                          aria-label="Seleccionar todas las unidades registradas"
+                          checked={allExistingSelected}
+                          disabled={!existingUnitIds.length}
+                          onChange={toggleSelectAllExisting}
+                        />
+                      </th>
                       <th>Número</th>
                       <th>Código</th>
                       <th>Piso</th>
-                      <th>Administración</th>
+                      <th>Área (m²)</th>
+                      <th>Cuota / mes</th>
+                      <th>Cuota fija</th>
                       <th>Tipo</th>
                       <th>Estado admin</th>
                       <th>Situación</th>
@@ -543,15 +696,115 @@ export default function TowersPage() {
                   <tbody>
                     {bulkRows.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="admin-empty">
+                        <td colSpan={11} className="admin-empty">
                           {bulkTowerId || !towers.length
                             ? 'No hay unidades registradas en esta torre. Usa las filas nuevas abajo.'
                             : 'Selecciona una torre para ver sus unidades.'}
                         </td>
                       </tr>
                     ) : (
-                      bulkRows.map((row) => (
+                      <>
+                        {existingUnitIds.length > 0 && (
+                          <tr className="admin-table__mass-row">
+                            <td className="admin-table__check" />
+                            <td colSpan={2}>
+                              <strong>Edición masiva</strong>
+                              <span className="admin-muted" style={{ display: 'block', fontSize: '0.75rem' }}>
+                                {selectedUnitIds.length} seleccionada(s)
+                              </span>
+                            </td>
+                            <td>—</td>
+                            <td>
+                              <input
+                                className="admin-table-input admin-table-input--sm"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={massEdit.areaSqm}
+                                onChange={(e) =>
+                                  setMassEdit((prev) => ({ ...prev, areaSqm: e.target.value }))
+                                }
+                                placeholder="m² para todas"
+                              />
+                            </td>
+                            <td>
+                              {massEdit.areaSqm !== '' && sqmRate > 0
+                                ? formatCop(
+                                    getUnitAdministrationFee(
+                                      { areaSqm: parseBulkAreaSqm(massEdit.areaSqm).value },
+                                      billingSettings
+                                    ) ?? 0
+                                  )
+                                : '—'}
+                            </td>
+                            <td>
+                              <input
+                                className="admin-table-input admin-table-input--sm"
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={massEdit.administrationFee}
+                                onChange={(e) =>
+                                  setMassEdit((prev) => ({
+                                    ...prev,
+                                    administrationFee: e.target.value,
+                                  }))
+                                }
+                                placeholder="Opcional"
+                              />
+                              <label className="admin-checkbox" style={{ marginTop: '0.35rem' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={massEdit.clearFixedFee}
+                                  onChange={(e) =>
+                                    setMassEdit((prev) => ({
+                                      ...prev,
+                                      clearFixedFee: e.target.checked,
+                                    }))
+                                  }
+                                />
+                                Quitar cuota fija
+                              </label>
+                            </td>
+                            <td>—</td>
+                            <td>
+                              <select
+                                className="admin-table-input"
+                                value={massEdit.adminStatus}
+                                onChange={(e) =>
+                                  setMassEdit((prev) => ({ ...prev, adminStatus: e.target.value }))
+                                }
+                              >
+                                <option value="">Sin cambio</option>
+                                <option value="current">Al día</option>
+                                <option value="pending">Pendiente</option>
+                                <option value="overdue">Moroso</option>
+                              </select>
+                            </td>
+                            <td colSpan={2}>
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--ghost"
+                                disabled={applyingMassEdit || selectedUnitIds.length === 0}
+                                onClick={applyMassEditToSelected}
+                              >
+                                {applyingMassEdit ? 'Aplicando…' : 'Aplicar a seleccionadas'}
+                              </button>
+                            </td>
+                          </tr>
+                        )}
+                        {bulkRows.map((row) => (
                         <tr key={row.key} className={row.existing ? 'is-existing' : ''}>
+                          <td className="admin-table__check">
+                            {row.existing ? (
+                              <input
+                                type="checkbox"
+                                aria-label={`Seleccionar unidad ${row.number}`}
+                                checked={selectedSet.has(row.unitId)}
+                                onChange={() => toggleUnitSelected(row.unitId)}
+                              />
+                            ) : null}
+                          </td>
                           <td>
                             <input
                               className="admin-table-input"
@@ -589,6 +842,39 @@ export default function TowersPage() {
                           </td>
                           <td>
                             {row.existing ? (
+                              (() => {
+                                const live = units.find((u) => u._id === row.unitId);
+                                const area = live?.areaSqm ?? live?.volumeM3 ?? row.areaSqm;
+                                return area !== '' && area != null ? area : '—';
+                              })()
+                            ) : (
+                              <input
+                                className="admin-table-input admin-table-input--sm"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={row.areaSqm}
+                                onChange={(e) => updateBulkRow(row.key, 'areaSqm', e.target.value)}
+                                placeholder="Ej: 85"
+                              />
+                            )}
+                          </td>
+                          <td>
+                            {(() => {
+                              const unit = row.existing
+                                ? units.find((u) => u._id === row.unitId)
+                                : {
+                                    areaSqm: row.areaSqm,
+                                    administrationFee: row.administrationFee,
+                                  };
+                              const fee = unit
+                                ? getUnitAdministrationFee(unit, billingSettings)
+                                : null;
+                              return fee != null ? formatCop(fee) : '—';
+                            })()}
+                          </td>
+                          <td>
+                            {row.existing ? (
                               row.administrationFee !== '' && row.administrationFee != null
                                 ? formatCop(row.administrationFee)
                                 : '—'
@@ -602,7 +888,7 @@ export default function TowersPage() {
                                 onChange={(e) =>
                                   updateBulkRow(row.key, 'administrationFee', e.target.value)
                                 }
-                                placeholder="Por defecto"
+                                placeholder="Opcional"
                               />
                             )}
                           </td>
@@ -666,7 +952,8 @@ export default function TowersPage() {
                             )}
                           </td>
                         </tr>
-                      ))
+                        ))}
+                      </>
                     )}
                   </tbody>
                 </table>
@@ -694,7 +981,11 @@ export default function TowersPage() {
                       onClick={() => applyDefaultFeeToTower(false)}
                       disabled={applyingDefaultFee}
                     >
-                      {applyingDefaultFee ? 'Aplicando…' : 'Aplicar valor por defecto'}
+                      {applyingDefaultFee
+                        ? 'Aplicando…'
+                        : sqmRate > 0
+                          ? 'Recalcular cuotas (m²)'
+                          : 'Aplicar valor por defecto'}
                     </button>
                     <button
                       type="button"
@@ -702,7 +993,9 @@ export default function TowersPage() {
                       onClick={() => applyDefaultFeeToTower(true)}
                       disabled={applyingDefaultFee}
                     >
-                      Reemplazar valores en torre
+                      {sqmRate > 0
+                        ? 'Forzar recálculo en torre'
+                        : 'Reemplazar valores en torre'}
                     </button>
                   </>
                 )}
@@ -770,16 +1063,44 @@ export default function TowersPage() {
               />
             </label>
             <label>
-              Administración (COP)
+              Área (m²)
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={unitForm.areaSqm}
+                onChange={(e) => setUnitForm({ ...unitForm, areaSqm: e.target.value })}
+                placeholder="Ej: 95.5"
+              />
+            </label>
+            <label>
+              Cuota fija (COP, opcional)
               <input
                 type="number"
                 min="0"
                 step="1"
                 value={unitForm.administrationFee}
                 onChange={(e) => setUnitForm({ ...unitForm, administrationFee: e.target.value })}
-                placeholder="Vacío = valor por defecto del conjunto"
+                placeholder="Solo si no usa m² × tarifa"
               />
             </label>
+            {unitForm.areaSqm !== '' && sqmRate > 0 && (
+              <p className="admin-muted" style={{ margin: 0, gridColumn: '1 / -1' }}>
+                Cuota estimada:{' '}
+                {formatCop(
+                  getUnitAdministrationFee(
+                    {
+                      areaSqm: parseBulkAreaSqm(unitForm.areaSqm).value,
+                      administrationFee:
+                        unitForm.administrationFee === ''
+                          ? null
+                          : parseBulkAdminFee(unitForm.administrationFee).value,
+                    },
+                    billingSettings
+                  ) ?? 0
+                )}
+              </p>
+            )}
             <label>
               Estado admin
               <select

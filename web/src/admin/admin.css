@@ -736,6 +736,156 @@
   background: #eef6f0;
 }
 
+.admin-grid--balance {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-stat {
+  min-width: 0;
+}
+
+.admin-stat__value--money {
+  font-size: clamp(1.15rem, 4.5vw, 1.35rem);
+  word-break: break-word;
+  line-height: 1.25;
+}
+
+.admin-form__section-heading {
+  margin: 0;
+  grid-column: 1 / -1;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.admin-form--register-payment {
+  grid-template-columns: 1fr;
+  max-width: 28rem;
+}
+
+.admin-form__submit {
+  width: 100%;
+  justify-self: stretch;
+}
+
+.admin-table-wrap--wide {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-table-wrap--wide .admin-table {
+  min-width: 36rem;
+}
+
+.admin-payments-line-cards {
+  display: none;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.admin-payments-line-card {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fafafa;
+}
+
+.admin-payments-line-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.admin-payments-line-card__rows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.admin-payments-line-card__rows div {
+  min-width: 0;
+}
+
+.admin-payments-line-card__rows dt {
+  margin: 0;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.admin-payments-line-card__rows dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.admin-payments-line-card__btn {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .admin-grid,
+  .admin-grid--balance {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-form:not(.admin-form--payments-search) {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+
+  .admin-form .admin-btn[type='submit'],
+  .admin-form__submit {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .admin-card {
+    padding: 1rem;
+  }
+
+  .admin-table-wrap--wide .admin-table {
+    min-width: 32rem;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 0.55rem 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .admin-payments-line-cards {
+    display: flex;
+  }
+
+  .admin-payments-lines-table {
+    display: none;
+  }
+}
+
+@media (min-width: 641px) {
+  .admin-form--register-payment {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-form--register-payment .admin-form__wide,
+  .admin-form--register-payment .admin-form__section-heading,
+  .admin-form--register-payment .admin-form__submit {
+    grid-column: 1 / -1;
+  }
+
+  .admin-form--register-payment .admin-form__submit {
+    width: auto;
+    justify-self: start;
+  }
+}
+
 .admin-payments-other {
   margin: 0.5rem 0 0;
   padding-left: 1.1rem;
@@ -755,10 +905,6 @@
 .admin-empty {
   color: var(--color-text-muted);
   font-size: 0.875rem;
-}
-
-.admin-stat__value--money {
-  font-size: 1.35rem;
 }
 
 .admin-highlights {
@@ -804,6 +950,26 @@
   gap: 0.5rem;
   margin-top: 0.5rem;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.admin-table__check {
+  width: 2.75rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.admin-table__check input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
+.admin-table__mass-row {
+  background: #f6faf7;
+}
+
+.admin-table__mass-row td {
+  vertical-align: top;
 }
 
 .admin-table--selectable .admin-table__check {

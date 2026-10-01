@@ -465,52 +465,87 @@ export default function AdminPaymentsPage() {
                 <strong>{residentLabel(detail.resident)}</strong>
               </p>
 
-              <div className="admin-grid">
+              <div className="admin-grid admin-grid--balance">
                 <div className="admin-stat">
                   <span className="admin-stat__label">Administración pendiente</span>
-                  <span className="admin-stat__value">{formatCop(adminDue)}</span>
+                  <span className="admin-stat__value admin-stat__value--money">{formatCop(adminDue)}</span>
                 </div>
                 <div className="admin-stat">
                   <span className="admin-stat__label">Otros conceptos abiertos</span>
-                  <span className="admin-stat__value">{formatCop(otherDue)}</span>
+                  <span className="admin-stat__value admin-stat__value--money">{formatCop(otherDue)}</span>
                 </div>
               </div>
 
               {detail.adminOutstanding?.lines?.length > 0 && (
-                <div className="admin-table-wrap" style={{ marginTop: '1rem' }}>
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Periodo</th>
-                        <th>Estado</th>
-                        <th>Capital</th>
-                        <th>Interés</th>
-                        <th>Total</th>
-                        <th>Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.adminOutstanding.lines.map((line) => (
-                        <tr key={line.paymentId || line.period}>
-                          <td>{formatPeriod(line.period)}</td>
-                          <td>{line.status === 'overdue' ? 'En mora' : 'Pendiente'}</td>
-                          <td>{formatCop(line.principalDue)}</td>
-                          <td>{formatCop(line.interestAmount)}</td>
-                          <td>{formatCop(line.totalDue)}</td>
-                          <td>
-                            <button
-                              type="button"
-                              className="admin-btn admin-btn--ghost"
-                              onClick={() => openAdminLineModal(line)}
-                            >
-                              Pagar
-                            </button>
-                          </td>
+                <>
+                  <div className="admin-payments-line-cards">
+                    {detail.adminOutstanding.lines.map((line) => (
+                      <article key={line.paymentId || line.period} className="admin-payments-line-card">
+                        <div className="admin-payments-line-card__head">
+                          <strong>{formatPeriod(line.period)}</strong>
+                          <span className="admin-badge admin-badge--pending">
+                            {line.status === 'overdue' ? 'En mora' : 'Pendiente'}
+                          </span>
+                        </div>
+                        <dl className="admin-payments-line-card__rows">
+                          <div>
+                            <dt>Capital</dt>
+                            <dd>{formatCop(line.principalDue)}</dd>
+                          </div>
+                          <div>
+                            <dt>Interés</dt>
+                            <dd>{formatCop(line.interestAmount)}</dd>
+                          </div>
+                          <div>
+                            <dt>Total</dt>
+                            <dd>{formatCop(line.totalDue)}</dd>
+                          </div>
+                        </dl>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost admin-payments-line-card__btn"
+                          onClick={() => openAdminLineModal(line)}
+                        >
+                          Pagar cuota
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="admin-table-wrap admin-table-wrap--wide admin-payments-lines-table">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Periodo</th>
+                          <th>Estado</th>
+                          <th>Capital</th>
+                          <th>Interés</th>
+                          <th>Total</th>
+                          <th>Acción</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {detail.adminOutstanding.lines.map((line) => (
+                          <tr key={line.paymentId || line.period}>
+                            <td>{formatPeriod(line.period)}</td>
+                            <td>{line.status === 'overdue' ? 'En mora' : 'Pendiente'}</td>
+                            <td>{formatCop(line.principalDue)}</td>
+                            <td>{formatCop(line.interestAmount)}</td>
+                            <td>{formatCop(line.totalDue)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--ghost"
+                                onClick={() => openAdminLineModal(line)}
+                              >
+                                Pagar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
 
               {adminDue <= 0 && (
@@ -562,8 +597,12 @@ export default function AdminPaymentsPage() {
                 </div>
               )}
 
-              <form className="admin-form" onSubmit={registerAdminPayment} style={{ marginTop: '1.25rem' }}>
-                <h3 style={{ margin: 0, gridColumn: '1 / -1' }}>Administración</h3>
+              <form
+                className="admin-form admin-form--register-payment"
+                onSubmit={registerAdminPayment}
+                style={{ marginTop: '1.25rem' }}
+              >
+                <h3 className="admin-form__section-heading">Administración</h3>
                 <label>
                   Forma de pago
                   <select
@@ -599,14 +638,14 @@ export default function AdminPaymentsPage() {
                 </label>
                 <button
                   type="submit"
-                  className="admin-btn"
+                  className="admin-btn admin-form__submit"
                   disabled={submitting || adminDue <= 0}
                 >
                   {submitting ? 'Registrando…' : 'Registrar pago de administración'}
                 </button>
               </form>
 
-              <div className="admin-table-wrap" style={{ marginTop: '1.5rem' }}>
+              <div className="admin-table-wrap admin-table-wrap--wide" style={{ marginTop: '1.5rem' }}>
                 <h3 style={{ margin: '0 0 0.75rem' }}>Historial de pagos</h3>
                 {paymentHistory.length === 0 ? (
                   <p className="admin-muted">Aún no hay pagos registrados para esta unidad.</p>

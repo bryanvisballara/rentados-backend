@@ -1,0 +1,216 @@
+.portal-shell {
+  --portal-sidebar-bg: var(--color-green, #1e3d32);
+  --portal-sidebar-width: 280px;
+  display: flex;
+  min-height: 100dvh;
+  background: var(--color-cream, #f6f4f0);
+  padding-top: var(--safe-top);
+}
+
+.portal-shell--porteria {
+  --portal-sidebar-bg: #2f4f46;
+}
+
+.portal-shell__topbar {
+  display: none;
+}
+
+.portal-shell__sidebar {
+  width: var(--portal-sidebar-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1rem;
+  background: var(--portal-sidebar-bg);
+  color: #faf7f2;
+}
+
+.portal-shell__sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.5rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.portal-shell__sidebar-title,
+.portal-shell__topbar-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.portal-shell__sidebar-sub,
+.portal-shell__topbar-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.portal-shell__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.25rem 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.portal-shell__link {
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-md, 8px);
+  color: rgba(250, 247, 242, 0.82);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s;
+}
+
+.portal-shell__link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #faf7f2;
+}
+
+.portal-shell__link--active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #faf7f2;
+}
+
+.portal-shell__footer {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.portal-shell__user {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+
+.portal-shell__logout {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: #faf7f2;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.portal-shell__logout:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.portal-shell__main {
+  flex: 1;
+  min-width: 0;
+  padding: clamp(1.25rem, 2.5vw, 2rem);
+  overflow: auto;
+}
+
+.portal-shell__backdrop {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .portal-shell {
+    flex-direction: column;
+    padding-top: 0;
+  }
+
+  .portal-shell__topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    padding: calc(0.65rem + var(--safe-top)) 0.85rem 0.65rem;
+    background: var(--portal-sidebar-bg);
+    color: #faf7f2;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  }
+
+  .portal-shell__menu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.65rem;
+    margin: 0;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .portal-shell__menu-btn:active {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .portal-shell__topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+  }
+
+  .portal-shell__sidebar-brand {
+    display: none;
+  }
+
+  .portal-shell__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: rgba(15, 23, 20, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    cursor: pointer;
+  }
+
+  .portal-shell--nav-open .portal-shell__backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .portal-shell__sidebar {
+    position: fixed;
+    z-index: 50;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(var(--portal-sidebar-width), 88vw);
+    max-width: 320px;
+    transform: translateX(-105%);
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.2);
+    padding-top: calc(1rem + var(--safe-top));
+  }
+
+  .portal-shell--nav-open .portal-shell__sidebar {
+    transform: translateX(0);
+  }
+
+  .portal-shell__main {
+    padding: 1rem 1rem 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-shell__sidebar,
+  .portal-shell__backdrop {
+    transition: none;
+  }
+}

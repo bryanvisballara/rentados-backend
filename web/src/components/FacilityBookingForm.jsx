@@ -66,6 +66,10 @@ export default function FacilityBookingForm({
   submitError = '',
   onSubmit,
   onMonthChange,
+  confirmExtra = null,
+  confirmStepTitle = '3. Confirma tu reserva',
+  submitLabel,
+  showPaymentHints = true,
 }) {
   const openHours = useMemo(() => resolveFacilityCalendarOpenHours(facility), [facility]);
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
@@ -216,7 +220,7 @@ export default function FacilityBookingForm({
 
       {selectedStart && (
         <section className="facility-book__step" aria-labelledby="facility-book-confirm-title">
-          <h3 id="facility-book-confirm-title">3. Confirma tu reserva</h3>
+          <h3 id="facility-book-confirm-title">{confirmStepTitle}</h3>
           <form className="facility-book__confirm" onSubmit={handleSubmit}>
             <div className="facility-book__summary">
               <p>
@@ -252,6 +256,8 @@ export default function FacilityBookingForm({
               )}
             </div>
 
+            {confirmExtra}
+
             <label className="facility-book__field">
               <span>Notas (opcional)</span>
               <textarea
@@ -262,12 +268,12 @@ export default function FacilityBookingForm({
               />
             </label>
 
-            {requiresApproval && (
+            {showPaymentHints && requiresApproval && (
               <p className="facility-book__hint">
                 Esta reserva quedará pendiente hasta que administración la apruebe.
               </p>
             )}
-            {serviceRequiresPayment && (
+            {showPaymentHints && serviceRequiresPayment && (
               <p className="facility-book__hint">
                 Después de confirmar irás al pago. La reserva será visible para todos cuando se confirme el cobro.
               </p>
@@ -283,9 +289,10 @@ export default function FacilityBookingForm({
             >
               {submitting
                 ? 'Procesando…'
-                : serviceRequiresPayment
-                  ? 'Confirmar y pagar'
-                  : 'Reservar ahora'}
+                : submitLabel ||
+                  (serviceRequiresPayment && showPaymentHints
+                    ? 'Confirmar y pagar'
+                    : 'Reservar ahora')}
             </button>
           </form>
         </section>

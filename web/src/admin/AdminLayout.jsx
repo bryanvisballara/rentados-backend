@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom';
-import Logo from '../components/Logo';
+import { useEffect, useMemo, useState } from 'react';
+import { Navigate, Outlet, useNavigate } from 'react-router-dom';
+import PortalShell from '../components/PortalShell';
 import { useAuth } from '../context/AuthContext';
 import { adminApi } from '../api/client';
 import { clearActiveTenant, getActiveTenant, setActiveTenant } from '../api/tenantContext';
@@ -34,7 +34,9 @@ export default function AdminLayout() {
         if (cancelled) return;
         setPortal(ctx);
         const saved = getActiveTenant();
-        const match = (ctx.buildings || []).find((building) => String(building.id) === String(saved?.buildingId));
+        const match = (ctx.buildings || []).find(
+          (building) => String(building.id) === String(saved?.buildingId)
+        );
         const active = ctx.scope === 'building' ? ctx.buildings?.[0] : match || ctx.buildings?.[0];
         if (!active) return;
         setActiveTenant({
@@ -68,86 +70,58 @@ export default function AdminLayout() {
     setActiveBuildingId(String(building.id));
   }
 
-  const nav = portal?.scope === 'company'
-    ? [ADMIN_NAV[0], { to: '/admin/conjuntos', label: 'Conjuntos' }, ...ADMIN_NAV.slice(1)]
-    : ADMIN_NAV;
+  const navItems = useMemo(() => {
+    return portal?.scope === 'company'
+      ? [ADMIN_NAV[0], { to: '/admin/conjuntos', label: 'Conjuntos' }, ...ADMIN_NAV.slice(1)]
+      : ADMIN_NAV;
+  }, [portal?.scope]);
 
   if (user?.role === 'SUPER_ADMIN' && !tenant?.organizationId) {
     return <Navigate to="/super-admin" replace />;
   }
 
   return (
-    <div className="admin-shell">
-      <aside className="admin-sidebar">
-        <div className="admin-sidebar__brand">
-          <Logo size="sm" />
+    <PortalShell
+      variant="admin"
+      brandSubtitle="Panel administrativo"
+      navItems={navItems}
+      user={user}
+      onLogout={handleLogout}
+    >
+      {user?.role === 'SUPER_ADMIN' && tenant && (
+        <div className="admin-tenant-banner">
           <div>
-            <p className="admin-sidebar__title">Rentados</p>
-            <p className="admin-sidebar__subtitle">Panel administrativo</p>
+            <strong>{tenant.buildingName}</strong>
+            <span> · {tenant.organizationName}</span>
           </div>
-        </div>
-
-        <nav className="admin-sidebar__nav">
-          {nav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                `admin-sidebar__link${isActive ? ' admin-sidebar__link--active' : ''}`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="admin-sidebar__footer">
-          <p className="admin-sidebar__user">
-            {user?.firstName} {user?.lastName}
-          </p>
-          <button type="button" className="admin-sidebar__logout" onClick={handleLogout}>
-            Cerrar sesión
+          <button type="button" className="admin-btn admin-btn--ghost" onClick={changeConjunto}>
+            Cambiar conjunto
           </button>
         </div>
-      </aside>
-
-      <div className="admin-main">
-        {user?.role === 'SUPER_ADMIN' && tenant && (
-          <div className="admin-tenant-banner">
-            <div>
-              <strong>{tenant.buildingName}</strong>
-              <span> · {tenant.organizationName}</span>
-            </div>
-            <button type="button" className="admin-btn admin-btn--ghost" onClick={changeConjunto}>
-              Cambiar conjunto
-            </button>
+      )}
+      {user?.role === 'ORG_ADMIN' && portal?.building && (
+        <div className="admin-tenant-banner">
+          <div>
+            <span>{portal.organization?.name}</span>
+            {portal.scope === 'company' && (portal.buildings || []).length > 0 ? (
+              <label className="admin-tenant-banner__switch">
+                Conjunto
+                <select value={activeBuildingId} onChange={(event) => switchBuilding(event.target.value)}>
+                  {(portal.buildings || []).map((building) => (
+                    <option key={building.id} value={String(building.id)}>
+                      {building.name}
+                      {building.city ? ` · ${building.city}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <strong>{portal.buildings?.[0]?.name || portal.building.name}</strong>
+            )}
           </div>
-        )}
-        {user?.role === 'ORG_ADMIN' && portal?.building && (
-          <div className="admin-tenant-banner">
-            <div>
-              <span>{portal.organization?.name}</span>
-              {portal.scope === 'company' && (portal.buildings || []).length > 0 ? (
-                <label className="admin-tenant-banner__switch">
-                  Conjunto
-                  <select value={activeBuildingId} onChange={(event) => switchBuilding(event.target.value)}>
-                    {(portal.buildings || []).map((building) => (
-                      <option key={building.id} value={String(building.id)}>
-                        {building.name}
-                        {building.city ? ` · ${building.city}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <strong>{portal.buildings?.[0]?.name || portal.building.name}</strong>
-              )}
-            </div>
-          </div>
-        )}
-        <Outlet key={activeBuildingId || 'conjunto'} />
-      </div>
-    </div>
+        </div>
+      )}
+      <Outlet key={activeBuildingId || 'conjunto'} />
+    </PortalShell>
   );
 }
