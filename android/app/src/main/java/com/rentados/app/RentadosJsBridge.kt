@@ -15,6 +15,7 @@ class RentadosJsBridge(
     private val context: Context,
     private val scope: CoroutineScope,
     private var fcmTokenProvider: () -> String,
+    private val onPickPackagePhoto: () -> Unit,
 ) {
     private var authToken = ""
     private var uploadedPair = ""
@@ -52,6 +53,11 @@ class RentadosJsBridge(
     fun setAppBadge(count: String) {
         val value = count.trim().toIntOrNull() ?: 0
         com.rentados.app.push.AppBadge.set(context, value)
+    }
+
+    @JavascriptInterface
+    fun pickPackagePhoto() {
+        onPickPackagePhoto()
     }
 
     @JavascriptInterface

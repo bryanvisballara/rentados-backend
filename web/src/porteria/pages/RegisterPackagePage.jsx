@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { porteriaApi } from '../../api/client';
 import UnitSelectField from '../components/UnitSelectField';
+import { bindNativePackagePhoto, openPackagePhotoPicker } from '../pickPackagePhoto';
 import '../../admin/admin.css';
 import '../PorteriaHomePage.css';
 
@@ -31,8 +32,7 @@ export default function RegisterPackagePage() {
       .catch((err) => setError(err.message));
   }, []);
 
-  async function handlePhotoChange(e) {
-    const file = e.target.files?.[0];
+  async function uploadPhotoFile(file) {
     if (!file) return;
 
     setUploadingPhoto(true);
@@ -54,6 +54,12 @@ export default function RegisterPackagePage() {
       setUploadingPhoto(false);
     }
   }
+
+  function handlePhotoChange(e) {
+    uploadPhotoFile(e.target.files?.[0]);
+  }
+
+  useEffect(() => bindNativePackagePhoto(uploadPhotoFile), []);
 
   async function handleRegister(e) {
     e.preventDefault();
@@ -118,17 +124,25 @@ export default function RegisterPackagePage() {
               />
             </label>
 
-            <label style={{ gridColumn: '1 / -1' }}>
-              Foto del paquete
+            <div style={{ gridColumn: '1 / -1' }}>
+              <span className="porteria__photo-label">Foto del paquete</span>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost porteria__photo-btn"
+                disabled={uploadingPhoto}
+                onClick={() => openPackagePhotoPicker(fileInputRef.current)}
+              >
+                {uploadingPhoto ? 'Subiendo foto…' : 'Tomar foto o elegir archivo'}
+              </button>
               <input
                 ref={fileInputRef}
+                className="porteria-photo-input"
                 type="file"
                 accept="image/*"
-                capture="environment"
                 onChange={handlePhotoChange}
                 required={!form.photoUrl}
               />
-            </label>
+            </div>
 
             {photoPreview && (
               <div className="porteria__photo-preview" style={{ gridColumn: '1 / -1' }}>

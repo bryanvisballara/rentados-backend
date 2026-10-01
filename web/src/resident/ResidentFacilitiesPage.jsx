@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { formatCop, residentApi } from '../api/client';
 import ResidentBookingsSection from './ResidentBookingsSection';
 import { FacilityGlyph } from './components/ResidentIcons';
+import { useResidentRefresh } from './ResidentRefresh';
 import './ResidentLayout.css';
 
 const PRICING_LABELS = {
@@ -17,13 +18,18 @@ export default function ResidentFacilitiesPage() {
   const [selectedId, setSelectedId] = useState(location.state?.serviceId || '');
   const [error, setError] = useState('');
 
+  const loadServices = useCallback(async () => {
+    const data = await residentApi.services();
+    setServicesData(data);
+    setError('');
+  }, []);
+
   useEffect(() => {
     document.title = 'Servicios del conjunto · Rentados';
-    residentApi
-      .services()
-      .then((data) => setServicesData(data))
-      .catch((err) => setError(err.message));
-  }, []);
+    loadServices().catch((err) => setError(err.message));
+  }, [loadServices]);
+
+  useResidentRefresh(loadServices);
 
   const services = servicesData?.services || [];
   const selected = services.find((s) => String(s.id) === String(selectedId));

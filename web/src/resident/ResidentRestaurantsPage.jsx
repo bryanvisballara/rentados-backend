@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatMoney, residentApi } from '../api/client';
 import PaymentCards from './PaymentCards';
+import { useResidentRefresh } from './ResidentRefresh';
 import './ResidentLayout.css';
 
 const CARTS_KEY = 'rentados_restaurant_carts';
@@ -82,13 +83,18 @@ export default function ResidentRestaurantsPage() {
     sessionStorage.setItem(CARTS_KEY, JSON.stringify(order));
   }, [order]);
 
+  const loadRestaurants = useCallback(async () => {
+    const data = await residentApi.restaurants();
+    setRestaurants(data.restaurants || []);
+    setError('');
+  }, []);
+
   useEffect(() => {
     document.title = 'Restaurantes · Rentados';
-    residentApi
-      .restaurants()
-      .then((data) => setRestaurants(data.restaurants || []))
-      .catch((err) => setError(err.message));
-  }, []);
+    loadRestaurants().catch((err) => setError(err.message));
+  }, [loadRestaurants]);
+
+  useResidentRefresh(loadRestaurants);
 
   const groups = useMemo(() => groupLines(order.lines), [order.lines]);
   const totals = useMemo(() => orderTotals(order.lines, restaurants), [order.lines, restaurants]);
@@ -315,17 +321,20 @@ function RestaurantMenu({
   const [submitting, setSubmitting] = useState(false);
   const [selectedDish, setSelectedDish] = useState(null);
 
+  const loadMenu = useCallback(async () => {
+    const payload = await residentApi.restaurant(restaurantId);
+    setData(payload);
+    document.title = `${payload.restaurant?.name || 'Menú'} · Rentados`;
+    setError('');
+  }, [restaurantId]);
+
   useEffect(() => {
     setData(null);
     setError('');
-    residentApi
-      .restaurant(restaurantId)
-      .then((payload) => {
-        setData(payload);
-        document.title = `${payload.restaurant?.name || 'Menú'} · Rentados`;
-      })
-      .catch((err) => setError(err.message));
-  }, [restaurantId]);
+    loadMenu().catch((err) => setError(err.message));
+  }, [loadMenu]);
+
+  useResidentRefresh(loadMenu);
 
   useEffect(() => {
     document.querySelector('.resident-app__main')?.scrollTo({ top: 0 });

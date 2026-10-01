@@ -7,29 +7,72 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Base64
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.firebase.messaging.FirebaseMessaging
 import com.rentados.app.databinding.ActivityMainBinding
+import java.io.ByteArrayOutputStream
+import java.io.File
+import kotlin.math.max
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var jsBridge: RentadosJsBridge
     private var latestPushToken = ""
     private var lastSafeAreaSignature = ""
+    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private var bridgePhotoPick = false
+    private var cameraPhotoUri: Uri? = null
+
+    private val galleryLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        handlePhotoResult(uri?.let { arrayOf(it) })
+    }
+
+    private val takePictureLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val uri = cameraPhotoUri
+        cameraPhotoUri = null
+        if (success && uri != null) {
+            handlePhotoResult(arrayOf(uri))
+        } else {
+            handlePhotoResult(null)
+        }
+    }
+
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            launchCameraCapture()
+        } else {
+            showCameraPermissionDialog()
+            cancelPendingPhotoPick()
+        }
+    }
 
     private val pushTokenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -90,7 +133,12 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        jsBridge = RentadosJsBridge(this, lifecycleScope, fcmTokenProvider = { latestPushToken })
+        jsBridge = RentadosJsBridge(
+            this,
+            lifecycleScope,
+            fcmTokenProvider = { latestPushToken },
+            onPickPackagePhoto = { openPackagePhotoPickerForBridge() },
+        )
 
         binding.webView.apply {
             setBackgroundColor(android.graphics.Color.WHITE)
@@ -105,7 +153,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             addJavascriptInterface(jsBridge, "RentadosNative")
-            webChromeClient = WebChromeClient()
+            webChromeClient = object : WebChromeClient() {
+                override fun onShowFileChooser(
+                    webView: WebView?,
+                    filePathCallback: ValueCallback<Array<Uri>>?,
+                    fileChooserParams: FileChooserParams?,
+                ): Boolean = showPackagePhotoChooser(filePathCallback)
+            }
             webViewClient = RentadosWebViewClient(
                 onPageStarted = {
                     lastSafeAreaSignature = ""
@@ -235,6 +289,124 @@ class MainActivity : AppCompatActivity() {
             })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
+    }
+
+    fun openPackagePhotoPickerForBridge() {
+        runOnUiThread { showPackagePhotoChooser(null) }
+    }
+
+    private fun showPackagePhotoChooser(inputCallback: ValueCallback<Array<Uri>>?): Boolean {
+        fileChooserCallback?.onReceiveValue(null)
+        fileChooserCallback = inputCallback
+        bridgePhotoPick = inputCallback == null
+        val options = mutableListOf("Elegir de galería")
+        if (packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
+            options.add(0, "Tomar foto")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Foto del paquete")
+            .setItems(options.toTypedArray()) { _, which ->
+                val choice = options[which]
+                when (choice) {
+                    "Tomar foto" -> openCameraWithPermission()
+                    else -> galleryLauncher.launch("image/*")
+                }
+            }
+            .setNegativeButton("Cancelar") { _, _ -> cancelPendingPhotoPick() }
+            .setOnCancelListener { cancelPendingPhotoPick() }
+            .show()
+        return true
+    }
+
+    private fun openCameraWithPermission() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED -> launchCameraCapture()
+
+            shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) ->
+                AlertDialog.Builder(this)
+                    .setTitle("Permiso de cámara")
+                    .setMessage("Rentados necesita usar la cámara para fotografiar el paquete en portería.")
+                    .setPositiveButton("Continuar") { _, _ ->
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                    .setNegativeButton("Cancelar") { _, _ -> cancelPendingPhotoPick() }
+                    .show()
+
+            else -> cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun launchCameraCapture() {
+        val photo = File(cacheDir, "paquete-${System.currentTimeMillis()}.jpg")
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", photo)
+        cameraPhotoUri = uri
+        takePictureLauncher.launch(uri)
+    }
+
+    private fun handlePhotoResult(uris: Array<Uri>?) {
+        val callback = fileChooserCallback
+        val forBridge = bridgePhotoPick
+        fileChooserCallback = null
+        bridgePhotoPick = false
+        when {
+            callback != null -> callback.onReceiveValue(uris)
+            forBridge && uris != null && uris.isNotEmpty() -> deliverPhotoToWeb(uris[0])
+        }
+    }
+
+    private fun cancelPendingPhotoPick() {
+        fileChooserCallback?.onReceiveValue(null)
+        fileChooserCallback = null
+        bridgePhotoPick = false
+        cameraPhotoUri = null
+    }
+
+    private fun showCameraPermissionDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Cámara desactivada")
+            .setMessage("Activa el permiso de cámara para Rentados en Ajustes del teléfono.")
+            .setPositiveButton("Entendido", null)
+            .show()
+    }
+
+    private fun deliverPhotoToWeb(uri: Uri) {
+        lifecycleScope.launch {
+            val dataUrl = withContext(Dispatchers.IO) { uriToDataUrl(uri) } ?: return@launch
+            val quoted = JSONObject.quote(dataUrl)
+            binding.webView.evaluateJavascript(
+                "window.rentadosApplyPickedPhoto && window.rentadosApplyPickedPhoto($quoted);",
+                null,
+            )
+        }
+    }
+
+    private fun uriToDataUrl(uri: Uri): String? {
+        val input = contentResolver.openInputStream(uri) ?: return null
+        val bitmap = input.use { BitmapFactory.decodeStream(it) } ?: return null
+        val scaled = scaleBitmap(bitmap, 1600)
+        if (scaled !== bitmap) {
+            bitmap.recycle()
+        }
+        val bytes = ByteArrayOutputStream()
+        if (!scaled.compress(Bitmap.CompressFormat.JPEG, 82, bytes)) {
+            scaled.recycle()
+            return null
+        }
+        scaled.recycle()
+        val encoded = Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
+        return "data:image/jpeg;base64,$encoded"
+    }
+
+    private fun scaleBitmap(source: Bitmap, maxEdge: Int): Bitmap {
+        val width = source.width
+        val height = source.height
+        val longest = max(width, height)
+        if (longest <= maxEdge) return source
+        val scale = maxEdge.toFloat() / longest.toFloat()
+        val targetW = (width * scale).roundToInt().coerceAtLeast(1)
+        val targetH = (height * scale).roundToInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(source, targetW, targetH, true)
     }
 
     private fun requestNotificationPermission() {

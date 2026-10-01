@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { residentApi } from '../api/client';
@@ -13,6 +13,7 @@ import {
   IconUtensils,
   IconUsers,
 } from './components/ResidentIcons';
+import { ResidentRefreshRoot } from './ResidentRefresh';
 import './ResidentLayout.css';
 import './ResidentHomePage.css';
 
@@ -103,17 +104,24 @@ export default function ResidentLayout() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [sections, setSections] = useState(FALLBACK_SECTIONS);
+  const mainRef = useRef(null);
+
+  const reloadSections = useCallback(
+    () =>
+      residentApi
+        .appSections()
+        .then((data) => setSections({ ...FALLBACK_SECTIONS, ...(data.sections || {}) }))
+        .catch(() => {}),
+    []
+  );
 
   useEffect(() => {
     registerResidentPush(residentApi);
   }, []);
 
   useEffect(() => {
-    residentApi
-      .appSections()
-      .then((data) => setSections({ ...FALLBACK_SECTIONS, ...(data.sections || {}) }))
-      .catch(() => {});
-  }, []);
+    reloadSections();
+  }, [reloadSections]);
 
   function sectionEnabled(key) {
     return sections[key] !== false;
@@ -165,14 +173,16 @@ export default function ResidentLayout() {
     <OverlayHostContext.Provider value={overlayHost}>
     <div className="resident-app">
       <div className="resident-app__frame">
-        <main className="resident-app__main">
-          {blockedSection ? (
-            <Navigate to="/app" replace />
-          ) : (
-            <div key={location.pathname} className="resident-page-enter">
-              <Outlet context={{ onLogout: handleLogout, sectionEnabled }} />
-            </div>
-          )}
+        <main ref={mainRef} className="resident-app__main">
+          <ResidentRefreshRoot scrollElRef={mainRef} onGlobalRefresh={reloadSections}>
+            {blockedSection ? (
+              <Navigate to="/app" replace />
+            ) : (
+              <div key={location.pathname} className="resident-page-enter">
+                <Outlet context={{ onLogout: handleLogout, sectionEnabled }} />
+              </div>
+            )}
+          </ResidentRefreshRoot>
         </main>
 
         <nav

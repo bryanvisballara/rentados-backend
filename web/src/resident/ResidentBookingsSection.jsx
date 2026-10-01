@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import FacilityBookingForm from '../components/FacilityBookingForm';
 import { formatCop, formatDateTime, formatTime, residentApi } from '../api/client';
 import { addMonths, startOfMonth } from '../utils/facilityBookingSlots';
 import { ResidentOverlay } from './ResidentLayout';
+import { useResidentRefresh } from './ResidentRefresh';
 import './ResidentHomePage.css';
 
 export default function ResidentBookingsSection({ services = [], selectedFacilityId = '' }) {
@@ -54,21 +55,31 @@ export default function ResidentBookingsSection({ services = [], selectedFacilit
     if (!facilityId && bookableServices[0]) setFacilityId(String(bookableServices[0].id));
   }, [selectedFacilityId, bookableServices, facilityId]);
 
-  async function loadCalendar(currentId = facilityId) {
-    if (!currentId) return;
-    const data = await residentApi.facilityBookings.calendar({
-      facilityId: currentId,
-      from: monthRange.from.toISOString(),
-      to: monthRange.to.toISOString(),
-    });
-    setBookings(data.bookings || []);
-    setFacilityMeta(data.facility || null);
-  }
+  const loadCalendar = useCallback(
+    async (currentId = facilityId) => {
+      if (!currentId) return;
+      const data = await residentApi.facilityBookings.calendar({
+        facilityId: currentId,
+        from: monthRange.from.toISOString(),
+        to: monthRange.to.toISOString(),
+      });
+      setBookings(data.bookings || []);
+      setFacilityMeta(data.facility || null);
+    },
+    [facilityId, monthRange.from, monthRange.to]
+  );
 
-  async function loadMine() {
+  const loadMine = useCallback(async () => {
     const data = await residentApi.myBookings();
     setMyBookings(data.bookings || []);
-  }
+  }, []);
+
+  const reloadBookings = useCallback(async () => {
+    await Promise.all([loadCalendar(), loadMine()]);
+    setError('');
+  }, [loadCalendar, loadMine]);
+
+  useResidentRefresh(reloadBookings);
 
   useEffect(() => {
     setFacilityMeta(null);
@@ -77,11 +88,11 @@ export default function ResidentBookingsSection({ services = [], selectedFacilit
 
   useEffect(() => {
     if (facilityId) loadCalendar().catch((err) => setError(err.message));
-  }, [facilityId, monthRange.from.getTime()]);
+  }, [facilityId, loadCalendar]);
 
   useEffect(() => {
     loadMine().catch(() => {});
-  }, []);
+  }, [loadMine]);
 
   async function handleCreateBooking({ startAt, blockIndex, notes }) {
     setCreateError('');

@@ -203,13 +203,15 @@
 				CODE_SIGN_ENTITLEMENTS = Rentados/Rentados.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 249VW3C887;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Rentados/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Rentados;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rentados usa la cámara para fotografiar el paquete en portería.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Rentados se conecta al servidor de esta Mac para probar la app.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Rentados abre tus fotos para adjuntar la imagen del paquete.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -217,7 +219,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rentados.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -232,13 +234,15 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Rentados/RentadosRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 249VW3C887;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Rentados/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Rentados;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rentados usa la cámara para fotografiar el paquete en portería.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Rentados se conecta al servidor de esta Mac para probar la app.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Rentados abre tus fotos para adjuntar la imagen del paquete.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -246,7 +250,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rentados.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

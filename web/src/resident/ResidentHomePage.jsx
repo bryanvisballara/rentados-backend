@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { formatCop, formatDate, formatDateTime, residentApi } from '../api/client';
 import { buildWhatsappUrl } from '../utils/whatsapp';
@@ -15,6 +15,7 @@ import {
   getResidentHomeCache,
   setResidentHomeCache,
 } from './residentHomeCache';
+import { useResidentRefresh } from './ResidentRefresh';
 import './ResidentLayout.css';
 
 const DEFAULT_HERO =
@@ -98,44 +99,38 @@ export default function ResidentHomePage() {
       : 'Rentados · Residente';
   }, [home?.building?.name]);
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([
+  const reloadHome = useCallback(async () => {
+    const [homeData, services, pubs, locker, inbox] = await Promise.all([
       residentApi.home(),
       residentApi.services(),
       residentApi.publications().catch(() => ({ publications: [] })),
       residentApi.lockerPackages().catch(() => ({ enabled: false, packages: [] })),
       residentApi.notifications().catch(() => ({ notifications: [], badge: 0 })),
-    ])
-      .then(([homeData, services, pubs, locker, inbox]) => {
-        if (cancelled) return;
-        const nextPublications = pubs.publications || [];
-        setHome(homeData);
-        setServicesData(services);
-        setPublications(nextPublications);
-        setLockerData(locker);
-        setNotices(inbox.notifications || []);
-        syncNativeAppBadge(
-          badgeFromInbox(inbox, locker?.enabled ? locker.packages?.length || 0 : 0)
-        );
-        setResidentHomeCache({
-          home: homeData,
-          servicesData: services,
-          publications: nextPublications,
-          lockerData: locker,
-        });
-        setContentReady(true);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setContentReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
+    ]);
+    const nextPublications = pubs.publications || [];
+    setHome(homeData);
+    setServicesData(services);
+    setPublications(nextPublications);
+    setLockerData(locker);
+    setNotices(inbox.notifications || []);
+    syncNativeAppBadge(
+      badgeFromInbox(inbox, locker?.enabled ? locker.packages?.length || 0 : 0)
+    );
+    setResidentHomeCache({
+      home: homeData,
+      servicesData: services,
+      publications: nextPublications,
+      lockerData: locker,
+    });
+    setContentReady(true);
+    setError('');
   }, []);
+
+  useEffect(() => {
+    reloadHome().catch((err) => setError(err.message));
+  }, [reloadHome]);
+
+  useResidentRefresh(reloadHome);
 
   useEffect(() => {
     if (!lockerPhotoPreview) return undefined;

@@ -3,7 +3,8 @@ const jwt = require('jsonwebtoken');
 const webpush = require('web-push');
 const admin = require('firebase-admin');
 const { getMessaging } = require('firebase-admin/messaging');
-const { PushDevice, Resident, ResidentNotification, Unit } = require('../models');
+const { Building, Organization, PushDevice, Resident, ResidentNotification, Unit } =
+  require('../models');
 const { badgeCountsForUsers } = require('./appBadge');
 
 const STATUS_COPY = {
@@ -218,9 +219,17 @@ async function notifyNewPublication(publication) {
   const residents = await Resident.find({ unitId: { $in: units.map((unit) => unit._id) } }).select(
     'userId organizationId unitId'
   );
-  const excerpt = String(publication.body || '').replace(/\s+/g, ' ').trim().slice(0, 140);
-  const title = publication.title || 'Nueva publicación';
-  const body = excerpt || 'Hay un aviso nuevo en tu conjunto.';
+  let conjuntoTitle = '';
+  if (publication.buildingId) {
+    const building = await Building.findById(publication.buildingId).select('name');
+    conjuntoTitle = building?.name?.trim() || '';
+  }
+  if (!conjuntoTitle && publication.organizationId) {
+    const org = await Organization.findById(publication.organizationId).select('name');
+    conjuntoTitle = org?.name?.trim() || '';
+  }
+  const title = conjuntoTitle || 'Tu conjunto';
+  const body = (publication.title || '').trim() || 'Nueva publicación';
   const docs = residents
     .filter((resident) => resident.userId)
     .map((resident) => ({

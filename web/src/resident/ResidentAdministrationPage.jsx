@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { residentApi } from '../api/client';
 import { getPaymentConceptLabel } from '../admin/paymentConcepts';
 import { APP_LOCALE, APP_TIMEZONE } from '../utils/dateTime';
 import { buildWhatsappUrl } from '../utils/whatsapp';
 import PaymentCards from './PaymentCards';
 import { ResidentOverlay } from './ResidentLayout';
+import { useResidentRefresh } from './ResidentRefresh';
 import { resolveAdministrationCarouselView } from './administrationBalance';
 import './ResidentAdministrationPage.css';
 
@@ -140,19 +141,22 @@ export default function ResidentAdministrationPage() {
   const [paying, setPaying] = useState(false);
   const [payNotice, setPayNotice] = useState('');
 
-  async function loadBilling() {
+  const loadBilling = useCallback(async () => {
     const [billingData, homeData] = await Promise.all([
       residentApi.billing(),
       residentApi.home().catch(() => null),
     ]);
     setBilling(billingData);
     setHome(homeData);
-  }
+    setError('');
+  }, []);
 
   useEffect(() => {
     document.title = 'Administración · Rentados';
     loadBilling().catch((err) => setError(err.message));
-  }, []);
+  }, [loadBilling]);
+
+  useResidentRefresh(loadBilling);
 
   const payments = billing?.payments || [];
   const pending = useMemo(

@@ -638,15 +638,69 @@
 }
 
 @media (max-width: 899px) {
+  .login {
+    height: var(--app-height, 100dvh);
+    max-height: var(--app-height, 100dvh);
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .login-animate-in--panel {
     animation-name: login-rise;
   }
 
   .login__panel {
+    width: 100%;
+    min-height: 0;
+    align-items: flex-start;
+    justify-content: flex-start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 1.15rem 1.25rem calc(1.35rem + var(--safe-bottom, 0px));
     background:
       linear-gradient(180deg, rgba(30, 61, 50, 0.04) 0%, transparent 28%),
       var(--color-cream);
   }
+
+  .login__logo-wrap .logo--lg {
+    width: 92px;
+  }
+
+  .login__header {
+    margin-bottom: 1rem;
+  }
+
+  .login__title {
+    margin-top: 0.65rem;
+    font-size: 1.7rem;
+  }
+
+  .login__subtitle {
+    margin-top: 0.35rem;
+    font-size: 0.875rem;
+  }
+
+  .login__form {
+    gap: 0.85rem;
+  }
+
+  .login__portal-nav {
+    margin-top: 1rem;
+    padding-top: 0.9rem;
+    padding-bottom: 0.35rem;
+  }
+}
+
+html.rentados-native-shell .login {
+  height: 100%;
+  max-height: 100%;
+}
+
+html.rentados-native-shell .login__panel {
+  padding-top: calc(max(var(--safe-top, 0px), var(--resident-edge-top, 0px), 2.75rem) + 0.35rem);
+  padding-bottom: calc(max(var(--safe-bottom, 0px), var(--resident-nav-dock-bottom, 0px), 2.75rem) + 1.15rem);
 }
 
 .login--welcome {

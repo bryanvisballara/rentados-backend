@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { residentApi } from '../api/client';
+import { useResidentRefresh } from './ResidentRefresh';
 import './ResidentLayout.css';
 
 const TYPE_LABELS = {
@@ -35,16 +36,19 @@ export default function ResidentPublicServicesPage() {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
 
-  async function loadOverview() {
+  const loadOverview = useCallback(async () => {
     const data = await residentApi.utilities.overview();
     setOverview(data);
+    setError('');
     return data;
-  }
+  }, []);
 
   useEffect(() => {
     document.title = 'Centro de Facturas · Rentados';
     loadOverview().catch((err) => setError(err.message));
-  }, []);
+  }, [loadOverview]);
+
+  useResidentRefresh(loadOverview);
 
   const accounts = overview?.accounts || [];
   const serviceTypes = overview?.serviceTypes || [];

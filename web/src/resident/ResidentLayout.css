@@ -124,6 +124,58 @@ html.rentados-native-shell .resident-hero__content {
   padding-bottom: var(--resident-nav-clearance, calc(5.5rem + var(--safe-bottom, 0px)));
 }
 
+.resident-pull-wrap {
+  min-height: 100%;
+  will-change: transform;
+}
+
+.resident-pull-wrap--refreshing {
+  transition: transform 0.2s ease;
+}
+
+.resident-pull {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 0;
+  margin: 0 0 -0.25rem;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--color-text-muted, #5c6350);
+  font-size: 0.75rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.resident-pull--visible {
+  height: 3rem;
+  opacity: 1;
+}
+
+.resident-pull__icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 2px solid rgba(45, 51, 33, 0.18);
+  border-top-color: var(--color-primary, #2d3321);
+  border-radius: 50%;
+}
+
+.resident-pull__icon--spin {
+  animation: resident-pull-spin 0.75s linear infinite;
+}
+
+@keyframes resident-pull-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.resident-pull__label {
+  letter-spacing: 0.01em;
+}
+
 .resident-sos-fab {
   position: absolute;
   right: 1.15rem;

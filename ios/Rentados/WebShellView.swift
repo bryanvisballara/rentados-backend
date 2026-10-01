@@ -1,6 +1,9 @@
+import AVFoundation
 import SwiftUI
 import UIKit
 import WebKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 enum LocalApp {
     #if DEBUG
@@ -69,6 +72,7 @@ struct WebView: UIViewRepresentable {
         controller.add(context.coordinator, name: "pushSession")
         controller.add(context.coordinator, name: "authSession")
         controller.add(context.coordinator, name: "appBadge")
+        controller.add(context.coordinator, name: "pickPhoto")
         let storedAuth = UserDefaults.standard.string(forKey: Self.authSessionDefaultsKey) ?? ""
         controller.addUserScript(WKUserScript(
             source: Self.openExternalScript,
@@ -289,6 +293,7 @@ struct WebView: UIViewRepresentable {
         private var observingPush = false
         private var authToken = ""
         private var uploadedPair = ""
+        private var filePickCompletion: (([URL]?) -> Void)?
 
         init(failed: Binding<Bool>) {
             _failed = failed
@@ -317,6 +322,16 @@ struct WebView: UIViewRepresentable {
                 let count = Int(message.body as? String ?? "") ?? 0
                 DispatchQueue.main.async {
                     UIApplication.shared.applicationIconBadgeNumber = max(0, count)
+                }
+                return
+            }
+            if message.name == "pickPhoto" {
+                presentPhotoChoices { [weak self] urls in
+                    guard let self, let webView = self.webView, let url = urls?.first else { return }
+                    guard let data = try? Data(contentsOf: url) else { return }
+                    let encoded = data.base64EncodedString()
+                    let js = "window.rentadosApplyPickedPhoto && window.rentadosApplyPickedPhoto('data:image/jpeg;base64,\(encoded)')"
+                    webView.evaluateJavaScript(js, completionHandler: nil)
                 }
                 return
             }
@@ -442,10 +457,248 @@ struct WebView: UIViewRepresentable {
             failed = true
         }
 
+        @available(iOS 18.4, *)
+        func webView(
+            _ webView: WKWebView,
+            runOpenPanelWith parameters: WKOpenPanelParameters,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping ([URL]?) -> Void
+        ) {
+            presentPhotoChoices(completion: completionHandler)
+        }
+
+        private func presentPhotoChoices(completion: @escaping ([URL]?) -> Void) {
+            if filePickCompletion != nil {
+                completion(nil)
+                return
+            }
+            filePickCompletion = completion
+            let sheet = UIAlertController(title: "Foto del paquete", message: nil, preferredStyle: .actionSheet)
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                sheet.addAction(UIAlertAction(title: "Tomar foto", style: .default) { [weak self] _ in
+                    self?.openCamera()
+                })
+            }
+            sheet.addAction(UIAlertAction(title: "Elegir de fotos", style: .default) { [weak self] _ in
+                self?.openPhotoLibrary()
+            })
+            sheet.addAction(UIAlertAction(title: "Elegir archivo", style: .default) { [weak self] _ in
+                self?.openImageFile()
+            })
+            sheet.addAction(UIAlertAction(title: "Cancelar", style: .cancel) { [weak self] _ in
+                self?.finishFilePick(nil)
+            })
+            guard let host = Self.topViewController() else {
+                finishFilePick(nil)
+                return
+            }
+            if let popover = sheet.popoverPresentationController {
+                popover.sourceView = host.view
+                popover.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.maxY - 1, width: 1, height: 1)
+            }
+            host.present(sheet, animated: true)
+        }
+
+        private func openCamera() {
+            guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                showSimpleAlert(
+                    title: "Cámara no disponible",
+                    message: "Este dispositivo no tiene cámara o no se puede usar."
+                )
+                finishFilePick(nil)
+                return
+            }
+            ensureCameraAccess { [weak self] granted in
+                guard let self else { return }
+                guard granted else {
+                    self.finishFilePick(nil)
+                    return
+                }
+                let picker = UIImagePickerController()
+                picker.sourceType = .camera
+                picker.cameraCaptureMode = .photo
+                picker.delegate = self
+                self.presentPicker(picker)
+            }
+        }
+
+        private func ensureCameraAccess(then: @escaping (Bool) -> Void) {
+            switch AVCaptureDevice.authorizationStatus(for: .video) {
+            case .authorized:
+                then(true)
+            case .notDetermined:
+                AVCaptureDevice.requestAccess(for: .video) { granted in
+                    DispatchQueue.main.async {
+                        if !granted {
+                            self.showCameraSettingsAlert()
+                        }
+                        then(granted)
+                    }
+                }
+            case .denied, .restricted:
+                showCameraSettingsAlert()
+                then(false)
+            @unknown default:
+                then(false)
+            }
+        }
+
+        private func showCameraSettingsAlert() {
+            showSimpleAlert(
+                title: "Permiso de cámara",
+                message: "Activa la cámara para Rentados en Ajustes → Rentados.",
+                settingsButton: true
+            )
+        }
+
+        private func showSimpleAlert(title: String, message: String, settingsButton: Bool = false) {
+            guard let host = Self.topViewController() else { return }
+            let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Entendido", style: .cancel))
+            if settingsButton {
+                alert.addAction(UIAlertAction(title: "Abrir Ajustes", style: .default) { _ in
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                })
+            }
+            if let presented = host.presentedViewController {
+                presented.dismiss(animated: true) {
+                    host.present(alert, animated: true)
+                }
+            } else {
+                host.present(alert, animated: true)
+            }
+        }
+
+        private func openPhotoLibrary() {
+            var config = PHPickerConfiguration(photoLibrary: .shared())
+            config.filter = .images
+            config.selectionLimit = 1
+            let picker = PHPickerViewController(configuration: config)
+            picker.delegate = self
+            presentPicker(picker)
+        }
+
+        private func openImageFile() {
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
+            picker.delegate = self
+            picker.allowsMultipleSelection = false
+            presentPicker(picker)
+        }
+
+        private func presentPicker(_ controller: UIViewController) {
+            DispatchQueue.main.async {
+                guard let host = Self.topViewController() else {
+                    self.finishFilePick(nil)
+                    return
+                }
+                let present = {
+                    host.present(controller, animated: true)
+                }
+                if let sheet = host.presentedViewController {
+                    sheet.dismiss(animated: true, completion: present)
+                } else {
+                    present()
+                }
+            }
+        }
+
+        private func finishFilePick(_ urls: [URL]?) {
+            let handler = filePickCompletion
+            filePickCompletion = nil
+            handler?(urls)
+        }
+
+        private static func topViewController() -> UIViewController? {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            let window = scenes.flatMap(\.windows).first { $0.isKeyWindow }
+            var current = window?.rootViewController
+            while let presented = current?.presentedViewController {
+                current = presented
+            }
+            return current
+        }
+
+        private static func writeTempJPEG(_ image: UIImage) -> URL? {
+            guard let data = image.jpegData(compressionQuality: 0.85) else { return nil }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("rentados-\(UUID().uuidString).jpg")
+            do {
+                try data.write(to: url, options: .atomic)
+                return url
+            } catch {
+                return nil
+            }
+        }
+
+        private static func jpegURL(fromFile url: URL) -> URL? {
+            if let image = UIImage(contentsOfFile: url.path), let jpeg = writeTempJPEG(image) {
+                return jpeg
+            }
+            let copy = FileManager.default.temporaryDirectory.appendingPathComponent("rentados-\(UUID().uuidString).jpg")
+            do {
+                if FileManager.default.fileExists(atPath: copy.path) {
+                    try FileManager.default.removeItem(at: copy)
+                }
+                try FileManager.default.copyItem(at: url, to: copy)
+                return copy
+            } catch {
+                return nil
+            }
+        }
+
         private static func isCancellation(_ error: Error) -> Bool {
             let nsError = error as NSError
             return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
         }
+    }
+}
+
+extension WebView.Coordinator: UIImagePickerControllerDelegate, UINavigationControllerDelegate, PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true) { self.finishFilePick(nil) }
+    }
+
+    func imagePickerController(
+        _ picker: UIImagePickerController,
+        didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+    ) {
+        let image = info[.originalImage] as? UIImage
+        picker.dismiss(animated: true) {
+            guard let image, let url = Self.writeTempJPEG(image) else {
+                self.finishFilePick(nil)
+                return
+            }
+            self.finishFilePick([url])
+        }
+    }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let provider = results.first?.itemProvider else {
+            finishFilePick(nil)
+            return
+        }
+        let type = UTType.image.identifier
+        guard provider.hasItemConformingToTypeIdentifier(type) else {
+            finishFilePick(nil)
+            return
+        }
+        provider.loadFileRepresentation(forTypeIdentifier: type) { url, _ in
+            let jpeg = url.flatMap { Self.jpegURL(fromFile: $0) }
+            DispatchQueue.main.async {
+                self.finishFilePick(jpeg.map { [$0] })
+            }
+        }
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        finishFilePick(nil)
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        let jpeg = urls.first.flatMap { Self.jpegURL(fromFile: $0) }
+        finishFilePick(jpeg.map { [$0] })
     }
 }
 

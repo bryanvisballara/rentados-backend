@@ -1,19 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import ResidentShopSection from './ResidentShopSection';
 import { residentApi } from '../api/client';
+import { useResidentRefresh } from './ResidentRefresh';
 import './ResidentLayout.css';
 
 export default function ResidentShopPage() {
   const [shopData, setShopData] = useState(null);
   const [error, setError] = useState('');
 
+  const loadShop = useCallback(async () => {
+    const data = await residentApi.shop();
+    setShopData(data);
+    setError('');
+  }, []);
+
   useEffect(() => {
     document.title = 'Shop · Rentados';
-    residentApi
-      .shop()
-      .then(setShopData)
-      .catch((err) => setError(err.message));
-  }, []);
+    loadShop().catch((err) => setError(err.message));
+  }, [loadShop]);
+
+  useResidentRefresh(loadShop);
 
   return (
     <div className="resident-page">

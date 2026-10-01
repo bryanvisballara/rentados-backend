@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { residentApi } from '../api/client';
 import { buildWhatsappUrl } from '../utils/whatsapp';
 import { ResidentOverlay } from './ResidentLayout';
+import { useResidentRefresh } from './ResidentRefresh';
 import './ResidentLayout.css';
 
 const PLACEHOLDER =
@@ -14,15 +15,28 @@ export default function ResidentProvidersPage() {
   const [selected, setSelected] = useState(null);
   const [lightboxUrl, setLightboxUrl] = useState('');
 
+  const loadProviders = useCallback(async () => {
+    const [providersData, home] = await Promise.all([
+      residentApi.providers(),
+      residentApi.home().catch(() => ({})),
+    ]);
+    const list = providersData.providers || [];
+    setServices(list);
+    setContacts(home?.organization?.contacts || {});
+    setSelected((current) => {
+      if (!current) return current;
+      const id = current.id || current._id;
+      return list.find((item) => (item.id || item._id) === id) || current;
+    });
+    setError('');
+  }, []);
+
   useEffect(() => {
     document.title = 'Servicios a domicilio · Rentados';
-    Promise.all([residentApi.providers(), residentApi.home().catch(() => ({}))])
-      .then(([providersData, home]) => {
-        setServices(providersData.providers || []);
-        setContacts(home?.organization?.contacts || {});
-      })
-      .catch((err) => setError(err.message));
-  }, []);
+    loadProviders().catch((err) => setError(err.message));
+  }, [loadProviders]);
+
+  useResidentRefresh(loadProviders);
 
   function requestService(service, member) {
     const phone = contacts.adminWhatsapp || contacts.receptionWhatsapp;

@@ -1,4 +1,11 @@
-const { LockerPackage, Resident, ResidentNotification, Unit, VisitorParkingVisit } = require('../models');
+const {
+  Building,
+  LockerPackage,
+  Resident,
+  ResidentNotification,
+  Unit,
+  VisitorParkingVisit,
+} = require('../models');
 const { getLockerSettings } = require('./lockerSettings');
 const { notifyUnitResidents } = require('./porteriaNotify');
 const { dismissLockerArrivalNotices } = require('./appBadge');
@@ -30,16 +37,25 @@ function formatPackage(pkg) {
   };
 }
 
-async function notifyUnitAboutPackage(pkg, unitId, organization) {
-  const body = pkg.comment?.trim()
-    ? `Tienes un paquete en portería: ${pkg.comment.trim()}`
-    : 'Tienes un paquete esperando en portería. Pasa a recogerlo.';
+async function resolveConjuntoTitle(organization, building, buildingId) {
+  if (building?.name?.trim()) return building.name.trim();
+  const id = building?._id || buildingId;
+  if (id) {
+    const doc = await Building.findById(id).select('name');
+    if (doc?.name?.trim()) return doc.name.trim();
+  }
+  return organization?.name?.trim() || 'Tu conjunto';
+}
+
+async function notifyUnitAboutPackage(pkg, unitId, organization, building) {
+  const title = await resolveConjuntoTitle(organization, building, pkg.buildingId);
+  const body = 'Tienes un paquete en portería.';
 
   const notifications = await notifyUnitResidents({
     organization,
     unitId,
     type: 'locker_package',
-    title: 'Paquete en casillero',
+    title,
     body,
     imageUrl: pkg.photoUrl,
     lockerPackageId: pkg._id,
@@ -133,7 +149,7 @@ async function registerLockerPackage(input, context) {
 
   let notifiedCount = 0;
   if (shouldNotify) {
-    const notifications = await notifyUnitAboutPackage(pkg, unit._id, organization);
+    const notifications = await notifyUnitAboutPackage(pkg, unit._id, organization, building);
     notifiedCount = notifications.length;
   }
 
@@ -168,7 +184,7 @@ async function releaseHeldLockerPackages(unitId, organization) {
 
   let released = 0;
   for (const pkg of held) {
-    const notifications = await notifyUnitAboutPackage(pkg, unitId, organization);
+    const notifications = await notifyUnitAboutPackage(pkg, unitId, organization, null);
     if (notifications.length > 0) released += 1;
   }
 
@@ -195,11 +211,12 @@ async function markPackagePickedUp(packageId, context, options = {}) {
   await pkg.save();
   await dismissLockerArrivalNotices(pkg._id);
 
+  const deliveryTitle = await resolveConjuntoTitle(organization, building, pkg.buildingId);
   await notifyUnitResidents({
     organization,
     unitId: pkg.unitId,
     type: 'locker_package',
-    title: 'Paquete entregado',
+    title: deliveryTitle,
     body: 'Portería registró la entrega de tu paquete.',
     lockerPackageId: pkg._id,
     url: '/app',
@@ -235,7 +252,7 @@ async function notifyHeldPackage(packageId, context) {
     throw new Error('La unidad sigue en mora; no se puede notificar al residente');
   }
 
-  const notifications = await notifyUnitAboutPackage(pkg, pkg.unitId, organization);
+  const notifications = await notifyUnitAboutPackage(pkg, pkg.unitId, organization, building);
   if (notifications.length === 0) {
     throw new Error('La unidad no tiene residentes en la app para notificar');
   }
@@ -301,11 +318,12 @@ async function notifyLockerOverflow(unitId, context) {
   const unit = await Unit.findById(unitId);
   if (!unit) throw new Error('Unidad no encontrada');
 
+  const overflowTitle = await resolveConjuntoTitle(organization, building, building?._id);
   await notifyUnitResidents({
     organization,
     unitId,
     type: 'locker_overflow',
-    title: 'Muchos paquetes en portería',
+    title: overflowTitle,
     body: `Tienes ${count} paquetes registrados en portería. Por favor pasa a recogerlos o contacta a portería.`,
   });
 
