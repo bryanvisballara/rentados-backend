@@ -4,6 +4,8 @@ import { homePathForUser } from './utils/homePath';
 import './components/ProtectedRoute.css';
 import LoginPage from './pages/LoginPage';
 import LegalPage from './pages/LegalPage';
+import LandingPage from './pages/LandingPage';
+import MetaPixelRouteTracker from './components/MetaPixelRouteTracker';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminLayout from './admin/AdminLayout';
 import SuperAdminLayout from './superadmin/SuperAdminLayout';
@@ -52,6 +54,10 @@ import VisitantesPage from './porteria/pages/VisitantesPage';
 import NotificationsPage from './porteria/pages/NotificationsPage';
 import ReservasPage from './porteria/pages/ReservasPage';
 
+function isNativeShell() {
+  return document.documentElement.classList.contains('rentados-native-shell');
+}
+
 function RootRedirect() {
   const { ready, isAuthenticated, user } = useAuth();
 
@@ -63,7 +69,10 @@ function RootRedirect() {
     );
   }
 
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAuthenticated) {
+    if (isNativeShell()) return <Navigate to="/login" replace />;
+    return <LandingPage />;
+  }
 
   const home = homePathForUser(user);
   if (home === '/login') return <Navigate to="/login" replace />;
@@ -72,10 +81,13 @@ function RootRedirect() {
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <MetaPixelRouteTracker />
+      <Routes>
       <Route path="/privacidad" element={<LegalPage page="privacidad" />} />
       <Route path="/soporte" element={<LegalPage page="soporte" />} />
-      <Route path="/marketing" element={<LegalPage page="marketing" />} />
+      <Route path="/conocenos" element={<LandingPage />} />
+      <Route path="/marketing" element={<Navigate to="/conocenos" replace />} />
       <Route path="/login" element={<LoginPage portal="resident" />} />
       <Route path="/admin/login" element={<LoginPage portal="admin" />} />
       <Route path="/super-admin/login" element={<LoginPage portal="superadmin" />} />
@@ -175,5 +187,6 @@ export default function App() {
 
       <Route path="/" element={<RootRedirect />} />
     </Routes>
+    </>
   );
 }

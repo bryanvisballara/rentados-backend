@@ -7,6 +7,7 @@ const html = fs.readFileSync(path.join(hostDir, 'index.html'));
 const routes = [
   'privacidad',
   'soporte',
+  'conocenos',
   'marketing',
   'login',
   'admin',

@@ -10,10 +10,6 @@ const PAGES = {
     title: 'Soporte',
     updated: '28 de septiembre de 2026',
   },
-  marketing: {
-    title: 'Rentados',
-    updated: '28 de septiembre de 2026',
-  },
 };
 
 export default function LegalPage({ page = 'privacidad' }) {
@@ -81,28 +77,10 @@ export default function LegalPage({ page = 'privacidad' }) {
         </article>
       )}
 
-      {page === 'marketing' && (
-        <article className="legal__body">
-          <p>
-            Rentados es la app del conjunto residencial. El residente consulta su administración, paga
-            cuotas, registra visitas, habla con portería y pide en los restaurantes y la tienda del
-            conjunto.
-          </p>
-          <p>
-            Cada copropiedad tiene su propio ingreso. La empresa que administra varios edificios entra
-            a los suyos; el administrador de un solo edificio ve únicamente ese.
-          </p>
-          <p>
-            Soporte: <a href="mailto:soporte@rentados.co">soporte@rentados.co</a>.{' '}
-            <Link to="/privacidad">Política de privacidad</Link>.
-          </p>
-        </article>
-      )}
-
       <nav className="legal__nav" aria-label="Información de Rentados">
         <Link to="/privacidad">Privacidad</Link>
         <Link to="/soporte">Soporte</Link>
-        <Link to="/marketing">Rentados</Link>
+        <Link to="/conocenos">Rentados</Link>
         <Link to="/login">Iniciar sesión</Link>
       </nav>
     </main>

@@ -575,7 +575,7 @@ export default function LoginPage({ portal = 'resident', redirectTo }) {
               <nav className="login-welcome__legal" aria-label="Información de Rentados">
                 <Link to="/privacidad">Privacidad</Link>
                 <Link to="/soporte">Soporte</Link>
-                <Link to="/marketing">Rentados</Link>
+                <Link to="/conocenos">Rentados</Link>
               </nav>
             </>
           ) : (
