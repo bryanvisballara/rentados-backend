@@ -7,6 +7,9 @@ import './LeadThankYouPage.css';
 export default function LeadThankYouPage() {
   useEffect(() => {
     document.title = 'Gracias — Rentados';
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'conversion_event_purchase', {});
+    }
   }, []);
 
   return (
