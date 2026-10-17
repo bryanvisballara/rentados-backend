@@ -8,6 +8,7 @@ const routes = [
   'privacidad',
   'soporte',
   'conocenos',
+  'lead',
   'marketing',
   'login',
   'admin',

@@ -5,6 +5,7 @@ import './components/ProtectedRoute.css';
 import LoginPage from './pages/LoginPage';
 import LegalPage from './pages/LegalPage';
 import LandingPage from './pages/LandingPage';
+import LeadThankYouPage from './pages/LeadThankYouPage';
 import MetaPixelRouteTracker from './components/MetaPixelRouteTracker';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminLayout from './admin/AdminLayout';
@@ -87,6 +88,7 @@ export default function App() {
       <Route path="/privacidad" element={<LegalPage page="privacidad" />} />
       <Route path="/soporte" element={<LegalPage page="soporte" />} />
       <Route path="/conocenos" element={<LandingPage />} />
+      <Route path="/lead" element={<LeadThankYouPage />} />
       <Route path="/marketing" element={<Navigate to="/conocenos" replace />} />
       <Route path="/login" element={<LoginPage portal="resident" />} />
       <Route path="/admin/login" element={<LoginPage portal="admin" />} />

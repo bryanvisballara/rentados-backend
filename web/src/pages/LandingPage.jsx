@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Logo from '../components/Logo';
+import { LANDING_LEAD_PATH, LANDING_VINCULA_CTA_LABEL } from '../lib/landingLead';
 import './LandingPage.css';
 
 const HERO_FEATURES = [
@@ -362,10 +363,6 @@ const SHOWCASE_MODULES_ANDROID_VIDEO = '/assets/landing-modules-showcase-android
 
 const PHONE_VIDEO_DELAY_MS = 2000;
 
-const LANDING_VINCULA_WHATSAPP_HREF =
-  'https://wa.me/573016214806?text=Hola%2C%20quiero%20vincular%20mi%20conjunto%20en%20Rentados';
-const LANDING_VINCULA_CTA_LABEL = 'Vincula tu conjunto HOY!';
-
 const VINCULA_ACQUISITION_STEPS = [
   {
     n: 1,
@@ -687,17 +684,12 @@ function LandingVinculaSolutionsCta() {
       <div className="land-vincula-cta__action">
         <p className="land-vincula-cta__prompt">¿Listo para comenzar?</p>
         <div className="land-vincula-cta__btn-wrap">
-          <a
-            className="land-vincula-cta__btn"
-            href={LANDING_VINCULA_WHATSAPP_HREF}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <Link className="land-vincula-cta__btn" to={LANDING_LEAD_PATH}>
             {LANDING_VINCULA_CTA_LABEL}
             <span className="land-vincula-cta__btn-arrow" aria-hidden="true">
               →
             </span>
-          </a>
+          </Link>
           <span className="land-vincula-cta__btn-spark" aria-hidden="true">
             <svg viewBox="0 0 48 32" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M6 24 L18 8" />
@@ -731,14 +723,9 @@ function LandingVinculaCard({ className = '' }) {
       </ul>
       <div className="land-vincula-card__foot">
         <p className="land-vincula-card__prompt">¿Listo para comenzar?</p>
-        <a
-          className="land-vincula-card__btn"
-          href={LANDING_VINCULA_WHATSAPP_HREF}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <Link className="land-vincula-card__btn" to={LANDING_LEAD_PATH}>
           {LANDING_VINCULA_CTA_LABEL}
-        </a>
+        </Link>
       </div>
     </div>
   );

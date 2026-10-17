@@ -1,0 +1,109 @@
+.lead-thanks {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem 1.25rem 2.5rem;
+  background:
+    radial-gradient(120% 80% at 50% -20%, rgba(45, 106, 79, 0.18), transparent 55%),
+    linear-gradient(180deg, #f6f9f7 0%, #eef4f0 100%);
+  color: #1b3b2e;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.lead-thanks__header {
+  width: min(100%, 42rem);
+  margin-bottom: 1.5rem;
+}
+
+.lead-thanks__logo {
+  display: inline-flex;
+  text-decoration: none;
+  color: inherit;
+}
+
+.lead-thanks__panel {
+  width: min(100%, 42rem);
+  padding: 2rem 1.75rem;
+  border-radius: 1.25rem;
+  background: #fff;
+  box-shadow:
+    0 1px 2px rgba(27, 59, 46, 0.06),
+    0 12px 40px rgba(27, 59, 46, 0.08);
+  text-align: center;
+}
+
+.lead-thanks__eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #2d6a4f;
+}
+
+.lead-thanks__panel h1 {
+  margin: 0 0 1rem;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: clamp(1.85rem, 4vw, 2.35rem);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.lead-thanks__lead {
+  margin: 0 auto 1.75rem;
+  max-width: 34ch;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: #3d5a4a;
+}
+
+.lead-thanks__whatsapp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.75rem 1.75rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2d6a4f 0%, #1b4332 100%);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(45, 106, 79, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lead-thanks__whatsapp:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgba(45, 106, 79, 0.42);
+}
+
+.lead-thanks__hint {
+  margin: 1.25rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: #5c7368;
+}
+
+.lead-thanks__nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem 1.25rem;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(27, 59, 46, 0.1);
+  font-size: 0.875rem;
+}
+
+.lead-thanks__nav a {
+  color: #2d6a4f;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.lead-thanks__nav a:hover {
+  text-decoration: underline;
+}
