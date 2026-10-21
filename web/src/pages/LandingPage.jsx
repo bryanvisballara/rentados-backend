@@ -1,7 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Logo from '../components/Logo';
-import { LANDING_LEAD_PATH, LANDING_VINCULA_CTA_LABEL } from '../lib/landingLead';
+import {
+  LANDING_LEAD_PATH,
+  LANDING_VINCULA_CTA_LABEL,
+  LANDING_VINCULA_WHATSAPP_HREF,
+} from '../lib/landingLead';
 import {
   RENTADOS_APP_STORE_URL,
   RENTADOS_PLAY_STORE_URL,
@@ -1160,14 +1164,18 @@ function LandingDeviceGallery() {
                   </div>
                 ))}
               </div>
-              <div className="land-device-gallery__cta-wrap">
-                <Link
-                  className="land-device-gallery__cta land-nav__enter"
-                  to="/crear-edificio"
-                  data-reveal="pop"
-                >
+              <div className="land-device-gallery__cta-wrap" data-reveal="pop">
+                <Link className="land-device-gallery__cta land-nav__enter" to="/crear-edificio">
                   Crea tu conjunto ahora
                 </Link>
+                <a
+                  className="land-device-gallery__cta land-device-gallery__cta--contact"
+                  href={LANDING_VINCULA_WHATSAPP_HREF}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Contáctanos
+                </a>
               </div>
             </>
           ) : null}
@@ -1262,7 +1270,10 @@ export default function LandingPage() {
           <div className="land-hero-banner">
             <p className="land-hero-banner__eyebrow">Conjuntos residenciales</p>
             <h1 className="land-hero-banner__title">
-              Transforma la manera de administrar tu conjunto residencial.
+              <span className="land-hero-banner__title-line">
+                Transforma la manera de administrar
+              </span>
+              <span className="land-hero-banner__title-line">tu conjunto residencial.</span>
             </h1>
             <p className="land-hero-banner__lead">
               Sé parte de la nueva generación de administradores.
@@ -1326,6 +1337,7 @@ export default function LandingPage() {
               Organiza las operaciones, consulta la información y mantén conectada a tu comunidad
             </span>
             <span className="land-value-prop__lead-line">
+              {' '}
               desde una plataforma diseñada para las necesidades reales de los conjuntos residenciales.
             </span>
           </p>

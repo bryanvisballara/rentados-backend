@@ -2261,7 +2261,10 @@ html.land-page:not(.rentados-native-shell) {
 
 .land-device-gallery__cta-wrap {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
+  gap: 0.75rem 1rem;
   margin-top: clamp(1.75rem, 4vw, 2.5rem);
   text-align: center;
 }
@@ -2271,6 +2274,23 @@ html.land-page:not(.rentados-native-shell) {
   align-items: center;
   justify-content: center;
   text-decoration: none;
+}
+
+.land-device-gallery__cta--contact {
+  padding: 0.62rem 1.15rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-green);
+  color: var(--color-green);
+  background: transparent;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.land-device-gallery__cta--contact:hover {
+  background: rgba(30, 61, 50, 0.08);
+  transform: translateY(-1px);
 }
 
 @media (max-width: 720px) {
@@ -4328,13 +4348,23 @@ html.land-page:not(.rentados-native-shell) {
 }
 
 @media (max-width: 640px) {
+  .land-foot {
+    padding: 1.15rem 1.1rem calc(0.85rem + var(--safe-bottom));
+  }
+
   .land-foot__grid {
-    grid-template-columns: 1fr;
-    gap: 1.65rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem 1rem;
+  }
+
+  .land-foot__col--rentados,
+  .land-foot__col--legal {
+    grid-column: 1 / -1;
   }
 
   .land-foot__downloads {
     justify-content: center;
+    gap: 0.45rem;
   }
 
   .land-foot__col--rentados {
@@ -4343,14 +4373,93 @@ html.land-page:not(.rentados-native-shell) {
 
   .land-foot__brand-head {
     justify-content: center;
+    margin-bottom: 0.45rem;
+  }
+
+  .land-foot__brand-head .logo,
+  .land-foot__brand-head .logo-placeholder {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .land-foot__wordmark {
+    font-size: 1.05rem;
   }
 
   .land-foot__lead {
     margin-inline: auto;
+    margin-bottom: 0.5rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  .land-foot__qr-card {
+    width: min(100%, 6.75rem);
+    padding: 0.35rem 0.35rem 0.4rem;
+    border-radius: 10px;
+  }
+
+  .land-foot__qr-img {
+    width: 72px;
+    height: 72px;
+  }
+
+  .land-foot__qr-label {
+    margin-top: 0.25rem;
+    font-size: 0.65rem;
+  }
+
+  .land-foot__heading {
+    margin-bottom: 0.35rem;
+    font-size: 0.65rem;
+  }
+
+  .land-foot__about-text,
+  .land-foot__brand-line {
+    font-size: 0.78rem;
+  }
+
+  .land-foot__about-company {
+    font-size: 0.86rem;
+  }
+
+  .land-foot__about-tagline {
+    margin-bottom: 0.35rem;
+    font-size: 0.68rem;
+  }
+
+  .land-foot__about-link {
+    font-size: 0.8rem;
+  }
+
+  .land-foot__brand-line + .land-foot__brand-line {
+    margin-top: 0.35rem;
+  }
+
+  .land-foot__brand-line-stores,
+  .land-foot__brand-line-web {
+    font-size: 0.72rem;
+  }
+
+  .land-foot__col--legal {
+    text-align: center;
   }
 
   .land-foot__legal {
+    flex-flow: row wrap;
+    justify-content: center;
     align-items: center;
+    gap: 0.45rem 0.85rem;
+  }
+
+  .land-foot__legal a {
+    font-size: 0.82rem;
+  }
+
+  .land-foot__copy {
+    margin-top: 0.75rem;
+    padding-top: 0.65rem;
+    font-size: 0.72rem;
   }
 }
 
@@ -5353,8 +5462,12 @@ html.land-page:not(.rentados-native-shell) {
   .land-hero-banner__title {
     white-space: normal;
     text-wrap: balance;
-    font-size: clamp(1.38rem, 6.8vw, 1.92rem);
-    line-height: 1.14;
+    font-size: clamp(1.32rem, 6.2vw, 1.85rem);
+    line-height: 1.12;
+  }
+
+  .land-hero-banner__title-line {
+    display: block;
   }
 
   .land-hero-banner__lead {
@@ -5445,7 +5558,6 @@ html.land-page:not(.rentados-native-shell) {
     text-wrap: balance;
   }
 
-  /* Un solo párrafo al envolver: evita que el 1.er bloque deje “conectada a tu comunidad” sola */
   .land-value-prop__lead-line {
     display: inline;
     white-space: normal;
@@ -5621,7 +5733,8 @@ html.land-page:not(.rentados-native-shell) {
     margin-top: 1.65rem;
   }
 
-  .land-device-gallery__cta.land-nav__enter {
+  .land-device-gallery__cta.land-nav__enter,
+  .land-device-gallery__cta--contact {
     width: min(100%, 20rem);
     min-height: 2.875rem;
     box-sizing: border-box;
