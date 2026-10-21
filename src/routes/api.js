@@ -7,9 +7,11 @@ const porteriaRoutes = require('./porteria');
 
 const platformRoutes = require('./platform');
 const webhookRoutes = require('./webhooks');
+const onboardingRoutes = require('./onboarding');
 
 const router = express.Router();
 
+router.use('/onboarding', onboardingRoutes);
 router.use('/auth', authRoutes);
 router.use('/platform', platformRoutes);
 router.use('/admin', adminRoutes);

@@ -1,57 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Logo from '../components/Logo';
 import { LANDING_LEAD_PATH, LANDING_VINCULA_CTA_LABEL } from '../lib/landingLead';
+import {
+  RENTADOS_APP_STORE_URL,
+  RENTADOS_PLAY_STORE_URL,
+  RENTADOS_QR_ANDROID,
+  RENTADOS_QR_IOS,
+  STORE_BADGE_APP_STORE,
+  STORE_BADGE_GOOGLE_PLAY,
+} from '../lib/rentadosAppStores';
+import LandingFooter from './LandingFooter';
 import './LandingPage.css';
 
-const HERO_FEATURES = [
-  { label: 'Paquetes y entregas.', icon: 'box' },
-  { label: 'Registro de visitas.', icon: 'people' },
-  { label: 'Reservas de áreas comunes.', icon: 'calendar' },
-  { label: 'Cuotas y facturas.', icon: 'card' },
-  { label: 'Avisos del conjunto.', icon: 'megaphone' },
+const HERO_VALUES = [
+  { label: 'Mejora procesos', icon: 'leaf' },
+  { label: 'Ahorra dinero', icon: 'savings' },
+  { label: 'Ahorra tiempo', icon: 'time' },
 ];
-
-const MODULES_FEATURED = [
-  {
-    title: 'Casillero',
-    text: 'Registro de paquetes y avisos al residente.',
-    icon: 'box',
-    accent: true,
-  },
-  {
-    title: 'Push del conjunto',
-    text: 'Envía avisos, noticias y comunicaciones.',
-    icon: 'megaphone',
-  },
-  {
-    title: 'Entrega con firma',
-    text: 'Control y confirmación de recibo.',
-    icon: 'signature',
-  },
-  {
-    title: 'Campana',
-    text: 'Los avisos viven en la app hasta la entrega.',
-    icon: 'bell',
-  },
-];
-
-const MODULES_COMPACT = [
-  { title: 'Visitantes', text: 'Registro previo de ingresos.', icon: 'people' },
-  { title: 'Parqueadero', text: 'Control de vehículos en portería.', icon: 'car' },
-  { title: 'Publicaciones', text: 'Avisos oficiales del conjunto.', icon: 'doc' },
-  { title: 'Cuotas', text: 'Administración y pagos en la app.', icon: 'card' },
-  { title: 'Cartera', text: 'Estado de cuenta por unidad.', icon: 'chart' },
-  { title: 'Morosidad', text: 'Seguimiento de pagos pendientes.', icon: 'clock' },
-  { title: 'Facturas', text: 'Servicios públicos de la unidad.', icon: 'invoice' },
-  { title: 'Reservas', text: 'Salón, gimnasio y zonas comunes.', icon: 'calendar' },
-  { title: 'Shop', text: 'Compras dentro del conjunto.', icon: 'cart' },
-  { title: 'Restaurantes', text: 'Pedidos a domicilio.', icon: 'restaurant' },
-  { title: 'Servicios', text: 'Prestadores habilitados.', icon: 'wrench' },
-  { title: 'SOS', text: 'Líneas de emergencia.', icon: 'shield' },
-];
-
-const MODULES = [...MODULES_FEATURED, ...MODULES_COMPACT];
 
 const SOLUTIONS_BENEFITS = [
   {
@@ -73,6 +39,69 @@ const SOLUTIONS_BENEFITS = [
   {
     bold: 'Mejora la experiencia',
     rest: 'de tus residentes.',
+  },
+];
+
+const RISK_ITEMS = [
+  {
+    icon: 'chart',
+    title: 'Cartera que no baja.',
+    note: 'La morosidad crece cuando nadie recuerda pagar a tiempo.',
+  },
+  {
+    icon: 'bell',
+    title: 'Residentes insatisfechos.',
+    note: 'Paquetes sin aviso y portería desbordada generan quejas.',
+  },
+  {
+    icon: 'clock',
+    title: 'Tiempo y dinero perdidos.',
+    note: 'Minutas y chats dispersos se comen horas de tu equipo.',
+  },
+];
+
+const VALUE_PROP_POINTS = [
+  {
+    icon: 'megaphone',
+    title: 'Centraliza las comunicaciones.',
+    text: 'Notifica a los residentes los eventos y novedades del conjunto de manera fácil y organizada. Incluye recordatorios en tus comunicaciones.',
+  },
+  {
+    icon: 'chart',
+    titleLines: ['Reducimos la cartera de tu', 'conjunto hasta en un 30%.'],
+    bullets: [
+      'Avisos automáticos en el celular.',
+      'Débitos automáticos.',
+      'Más pagos, menos morosidad.',
+    ],
+  },
+  {
+    icon: 'box',
+    title: 'No más minutas manuales, no más papelería.',
+    bullets: [
+      'Dale a tus colaboradores mejores herramientas de trabajo.',
+      'Dale a tus colaboradores optimización en sus procesos.',
+    ],
+  },
+];
+
+const GUIDE_CREDENTIALS = [
+  {
+    id: 'wwtecno',
+    icon: 'doc',
+    pre: 'Una marca de',
+    title: 'WW TECNO S.A.S',
+    subtitle: 'World Wide Technologies',
+  },
+  {
+    id: 'clients',
+    icon: 'people',
+    title: 'Más de 1.000 clientes felices',
+  },
+  {
+    id: 'focus',
+    icon: 'chart',
+    title: 'Especialistas en conjuntos residenciales en Colombia',
   },
 ];
 
@@ -117,6 +146,33 @@ const FLOW = [
     text: 'Firma en portería. El número del ícono baja.',
   },
 ];
+
+function HeroValueIcon({ name }) {
+  const common = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 };
+  if (name === 'leaf') {
+    return (
+      <svg {...common}>
+        <path d="M12 21c-4-3.5-7-7.5-7-12a7 7 0 0 1 14 0c0 4.5-3 8.5-7 12Z" />
+        <path d="M12 9v12" />
+      </svg>
+    );
+  }
+  if (name === 'savings') {
+    return (
+      <svg {...common}>
+        <rect x="5" y="7" width="14" height="10" rx="1.5" />
+        <circle cx="12" cy="12" r="2.5" />
+        <path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7v5.5l3.5 2" />
+    </svg>
+  );
+}
 
 function FeatureIcon({ name }) {
   const common = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6 };
@@ -363,18 +419,98 @@ const SHOWCASE_MODULES_ANDROID_VIDEO = '/assets/landing-modules-showcase-android
 
 const PHONE_VIDEO_DELAY_MS = 2000;
 
+/** Secciones inferiores (cartera, casillero, CTA final) — desactivadas en landing actual */
+const SHOW_LANDING_LOWER_SECTIONS = false;
+
+const DEVICE_GALLERY_HERO_PHONE = {
+  variant: 'iphone',
+  src: LANDING_APP_VIDEO,
+  title: 'Recorrido por la app en iPhone',
+  description:
+    'Pagos de administración, comunicados, paquetes y servicios del conjunto en un solo lugar.',
+  label: 'Demostración en video de la app Rentados en un iPhone',
+};
+
+const DEVICE_GALLERY_PHONE_ROW = [
+  {
+    variant: 'iphone',
+    src: SHOWCASE_IPHONE_VIDEO,
+    title: 'Push en iPhone',
+    description: 'El residente ve al instante cuando llega un paquete o un aviso importante.',
+    label: 'Notificación push en iPhone',
+    startDelayMs: PHONE_VIDEO_DELAY_MS,
+  },
+  {
+    variant: 'android',
+    src: SHOWCASE_ANDROID_VIDEO,
+    title: 'Push en Android',
+    description: 'La misma alerta en celulares Android, sin depender de WhatsApp.',
+    label: 'Notificación push en Android',
+    startDelayMs: PHONE_VIDEO_DELAY_MS,
+  },
+  {
+    variant: 'iphone',
+    src: SHOWCASE_MODULES_IPHONE_VIDEO,
+    title: 'Módulos en iPhone',
+    description: 'Todo lo que ofrece el conjunto, organizado en la app del residente.',
+    label: 'Módulos de Rentados en iPhone',
+    startDelayMs: PHONE_VIDEO_DELAY_MS,
+  },
+  {
+    variant: 'android',
+    src: SHOWCASE_MODULES_ANDROID_VIDEO,
+    title: 'Módulos en Android',
+    description: 'Experiencia completa para residentes con equipos Android.',
+    label: 'Módulos de Rentados en Android',
+    startDelayMs: PHONE_VIDEO_DELAY_MS,
+  },
+];
+
+const DEVICE_GALLERY_TABLET_ROW = [
+  {
+    variant: 'ipad',
+    src: SHOWCASE_IPAD_VIDEO,
+    title: 'Registro de paquete',
+    description: 'Registro de visitantes, paquetes y operación diaria desde la recepción.',
+    label: 'Demostración en tablet de portería Rentados',
+  },
+  {
+    variant: 'ipad',
+    src: SHOWCASE_MODULES_TABLET_VIDEO,
+    title: 'Publicación de comunicado',
+    description: 'Comunicaciones, cartera y módulos del conjunto en pantalla amplia.',
+    label: 'Módulos de Rentados en tablet',
+  },
+];
+
+const DEVICE_GALLERY_GROUPS = [
+  {
+    id: 'residente',
+    title: 'La app del residente',
+    layout: 'hero-phones',
+    hero: DEVICE_GALLERY_HERO_PHONE,
+    phoneRow: DEVICE_GALLERY_PHONE_ROW,
+  },
+  {
+    id: 'tablets',
+    title: 'Portería y módulos en tablet',
+    layout: 'tablets-row',
+    tabletRow: DEVICE_GALLERY_TABLET_ROW,
+  },
+];
+
 const VINCULA_ACQUISITION_STEPS = [
   {
     n: 1,
     icon: 'contact',
-    title: 'Contáctanos para crear tu cuenta',
+    title: 'Crea tu conjunto en segundos',
     text: 'Sin costos de inscripción ni de configuración.',
   },
   {
     n: 2,
     icon: 'building',
     title: 'Configura tu conjunto',
-    text: 'En pocos minutos y con nuestro acompañamiento.',
+    text: 'Contáctanos para terminar de configurar tu conjunto.',
   },
   {
     n: 3,
@@ -548,12 +684,103 @@ function VinculaFlowBridge() {
   );
 }
 
-function LandingVinculaSteps({ className = '' }) {
+const READ_MORE_PREVIEW =
+  'Hoy un residente puede necesitar más de ocho pasos solo para pagar la administración; muchos abandonan a mitad del camino y la deuda crece. En portería, buscar en la minuta un paquete recibido hace una semana roba minutos y genera filas. Los visitantes sin registro previo alargan las entradas en parqueadero. Los comunicados por WhatsApp se pierden entre chats personales y, además, las cuentas se bloquean por envíos masivos.';
+
+function LandReadMoreStory() {
+  const [expanded, setExpanded] = useState(false);
+  const panelId = useId();
+
+  return (
+    <article className="land-read-more__block" data-reveal="clip-up">
+      <h2 id="land-read-more-heading" className="land-read-more__title">
+        <span className="land-read-more__title-line">Lo que hoy frena a residentes</span>
+        <span className="land-read-more__title-line">y cómo Rentados lo simplifica</span>
+      </h2>
+      {!expanded ? (
+        <p className="land-read-more__preview">{READ_MORE_PREVIEW}</p>
+      ) : (
+        <div id={panelId} className="land-read-more__full">
+          <p className="land-read-more__lead">
+            Actualmente a un residente le toma más de ocho pasos pagar una administración, y eso
+            conlleva a que termine no pagándola y acumulando deudas.
+          </p>
+          <p className="land-read-more__label">Un residente tiene que:</p>
+          <ol className="land-read-more__steps">
+            <li>Entrar al navegador.</li>
+            <li>Buscar en Google la página que recibe pagos.</li>
+            <li>Abrir la página proveedora del servicio.</li>
+            <li>Buscar la opción de pagos.</li>
+            <li>Buscar el nombre del edificio.</li>
+            <li>Colocar la referencia del apartamento.</li>
+            <li>Colocar el valor de la administración.</li>
+            <li>Dirigirse al pago.</li>
+          </ol>
+          <p>
+            Esta serie de pasos, que toma varios minutos, hace que los residentes abandonen el proceso
+            a mitad del camino. En Rentados, con dos clics pagan la administración en menos de diez
+            segundos.
+          </p>
+          <h3 className="land-read-more__subhead">Minutas y paquetes</h3>
+          <p>
+            ¿Cuánto tiempo pierde un recepcionista buscando en la minuta un paquete que recibió hace
+            una semana, para que el residente firme y por fin se lo entreguen? Cada búsqueda manual
+            es fila, estrés y residentes molestos.
+          </p>
+          <h3 className="land-read-more__subhead">Parqueadero y visitantes</h3>
+          <p>
+            Las filas en parqueadero también crecen cuando los visitantes no están registrados con
+            antelación: portería debe validar datos en el momento, en lugar de autorizar ingresos
+            que ya conocía.
+          </p>
+          <h3 className="land-read-more__subhead">Comunicaciones que sí llegan</h3>
+          <p>
+            Hoy los mensajes de WhatsApp se pierden entre tantos chats que reciben los residentes.
+            Además, WhatsApp está bloqueando cuentas por la cantidad de mensajes enviados desde los
+            conjuntos.
+          </p>
+          <p>
+            Con Rentados publicas comunicados oficiales y puedes añadir uno o varios recordatorios a
+            cada aviso, sin crear publicaciones nuevas: llegan como notificaciones push al celular.
+          </p>
+          <p className="land-read-more__example">
+            <strong>Ejemplo:</strong> se suspende el suministro de agua por doce horas por
+            mantenimiento en los tanques de reserva, a las 6 p.&nbsp;m. del martes; se recomienda
+            recoger agua. El comunicado se envía un día antes o la misma mañana, y el administrador
+            puede programar recordatorios — por ejemplo una hora antes y quince minutos antes — para
+            que el residente reciba el aviso a tiempo.
+          </p>
+        </div>
+      )}
+      <button
+        type="button"
+        className="land-read-more__toggle"
+        aria-expanded={expanded}
+        aria-controls={expanded ? panelId : undefined}
+        onClick={() => setExpanded((open) => !open)}
+      >
+        {expanded ? 'Ver menos' : 'Ver más'}
+      </button>
+    </article>
+  );
+}
+
+function LandingVinculaSteps({ className = '', staggerReveal = '' }) {
+  const staggerId = staggerReveal.trim();
   return (
     <div className={`land-vincula-flow${className ? ` ${className}` : ''}`}>
-      <ol className="land-vincula-flow__track">
+      <ol
+        className="land-vincula-flow__track"
+        {...(staggerId ? { 'data-reveal-stagger': staggerId } : {})}
+      >
         {VINCULA_ACQUISITION_STEPS.map((step, index) => (
-          <li key={step.title} className="land-vincula-flow__segment">
+          <li
+            key={step.title}
+            className="land-vincula-flow__segment"
+            {...(staggerId
+              ? { 'data-reveal-item': true, style: { '--reveal-i': index } }
+              : {})}
+          >
             <article className="land-vincula-flow__card">
               <span className="land-vincula-flow__badge">{step.n}</span>
               <span className="land-vincula-flow__icon">
@@ -846,57 +1073,106 @@ function DeviceVideoMock({ variant, src, label, startDelayMs = 0 }) {
   );
 }
 
-function PhoneDashboard() {
+function DeviceGalleryItem({ variant, src, title, description, label, startDelayMs = 0, featured = false }) {
   return (
-    <DeviceVideoMock
-      variant="iphone"
-      src={LANDING_APP_VIDEO}
-      label="Demostración en video de la app Rentados en un iPhone"
-    />
+    <article
+      className={`land-device-gallery__item land-device-gallery__item--${variant}${
+        featured ? ' land-device-gallery__item--featured' : ''
+      }`}
+    >
+      <div className="land-device-gallery__item-copy">
+        <h4 className="land-device-gallery__item-title">{title}</h4>
+        <p className="land-device-gallery__item-desc">{description}</p>
+      </div>
+      <div className="land-device-gallery__item-device">
+        <DeviceVideoMock
+          variant={variant}
+          src={src}
+          label={label}
+          startDelayMs={startDelayMs}
+        />
+      </div>
+    </article>
   );
 }
 
-function ShowcaseDevices({
-  ariaLabel,
-  tabletSrc,
-  iphoneSrc,
-  androidSrc,
-  tabletTag = 'Tablet · Portería.',
-  className = '',
-}) {
+function LandingDeviceGallery() {
   return (
-    <section
-      className={`land-showcase-devices${className ? ` ${className}` : ''}`}
-      aria-label={ariaLabel}
-    >
-      <div className="land-showcase-devices__grid" data-reveal-stagger>
-        <div className="land-showcase-devices__ipad" data-reveal-item style={{ '--reveal-i': 0 }}>
-          <div className="land-showcase-devices__device">
-            <span className="land-showcase-devices__tag">{tabletTag}</span>
-            <DeviceVideoMock variant="ipad" src={tabletSrc} label={`Demostración en ${tabletTag}`} />
-          </div>
+    <section className="land-device-gallery" id="demos" aria-labelledby="land-device-gallery-title">
+      <header className="land-device-gallery__head" data-reveal="right">
+        <LandingPosterKicker>Demos en video</LandingPosterKicker>
+        <h2 id="land-device-gallery-title" className="land-device-gallery__title">
+          Así se vive la experiencia en un conjunto moderno.
+        </h2>
+        <p className="land-device-gallery__lead">
+          Cada dispositivo muestra un flujo real: la app del residente, la operación en portería y los
+          módulos del conjunto.
+        </p>
+      </header>
+
+      {DEVICE_GALLERY_GROUPS.map((group) => (
+        <div
+          key={group.id}
+          className={`land-device-gallery__group land-device-gallery__group--${group.layout}`}
+          data-reveal-stagger="demos"
+        >
+          <h3
+            className="land-device-gallery__group-title"
+            data-reveal-item
+            style={{ '--reveal-i': 0 }}
+          >
+            {group.title}
+          </h3>
+          {group.layout === 'hero-phones' ? (
+            <div className="land-device-gallery__layout land-device-gallery__layout--hero-phones">
+              <div data-reveal-item style={{ '--reveal-i': 1 }}>
+                <DeviceGalleryItem {...group.hero} featured />
+              </div>
+              <div
+                className="land-device-gallery__phones-row"
+                data-reveal-item
+                style={{ '--reveal-i': 2 }}
+              >
+                {group.phoneRow.map((item) => (
+                  <div
+                    key={`${group.id}-${item.variant}-${item.title}`}
+                    className="land-device-gallery__phones-row-cell"
+                  >
+                    <DeviceGalleryItem {...item} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {group.layout === 'tablets-row' ? (
+            <>
+              <div
+                className="land-device-gallery__tablets-row"
+                data-reveal-item
+                style={{ '--reveal-i': 1 }}
+              >
+                {group.tabletRow.map((item) => (
+                  <div
+                    key={`${group.id}-${item.variant}-${item.title}`}
+                    className="land-device-gallery__tablets-row-cell"
+                  >
+                    <DeviceGalleryItem {...item} />
+                  </div>
+                ))}
+              </div>
+              <div className="land-device-gallery__cta-wrap">
+                <Link
+                  className="land-device-gallery__cta land-nav__enter"
+                  to="/crear-edificio"
+                  data-reveal="pop"
+                >
+                  Crea tu conjunto ahora
+                </Link>
+              </div>
+            </>
+          ) : null}
         </div>
-        <div className="land-showcase-devices__phones" data-reveal-item style={{ '--reveal-i': 1 }}>
-          <div className="land-showcase-devices__device land-showcase-devices__device--phone">
-            <span className="land-showcase-devices__tag">iOS</span>
-            <DeviceVideoMock
-              variant="iphone"
-              src={iphoneSrc}
-              label="Notificación push en iPhone"
-              startDelayMs={PHONE_VIDEO_DELAY_MS}
-            />
-          </div>
-          <div className="land-showcase-devices__device land-showcase-devices__device--phone">
-            <span className="land-showcase-devices__tag">Android</span>
-            <DeviceVideoMock
-              variant="android"
-              src={androidSrc}
-              label="Notificación push en Android"
-              startDelayMs={PHONE_VIDEO_DELAY_MS}
-            />
-          </div>
-        </div>
-      </div>
+      ))}
     </section>
   );
 }
@@ -906,9 +1182,12 @@ export default function LandingPage() {
 
   useEffect(() => {
     document.title = 'Rentados · Tu conjunto, en una sola app';
+    document.documentElement.classList.add('land-page');
+    return () => document.documentElement.classList.remove('land-page');
   }, []);
 
   useEffect(() => {
+    if (!SHOW_LANDING_LOWER_SECTIONS) return undefined;
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce) return undefined;
     const timer = window.setInterval(() => {
@@ -921,6 +1200,8 @@ export default function LandingPage() {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const nodes = document.querySelectorAll('[data-reveal], [data-reveal-stagger]');
     const reveal = (node) => node.classList.add('is-in');
+
+    document.querySelectorAll('.land-hero-banner').forEach(reveal);
 
     const revealInView = () => {
       const vh = window.innerHeight || document.documentElement.clientHeight;
@@ -942,7 +1223,7 @@ export default function LandingPage() {
           if (entry.isIntersecting) reveal(entry.target);
         });
       },
-      { threshold: 0.08, rootMargin: '0px 0px 4% 0px' }
+      { threshold: 0.12, rootMargin: '0px 0px -2% 0px' }
     );
     nodes.forEach((node) => observer.observe(node));
 
@@ -969,62 +1250,249 @@ export default function LandingPage() {
           <span>Rentados</span>
         </Link>
         <div className="land-nav__end">
-          <nav className="land-nav__links" aria-label="Secciones">
-            <a href="#casillero">Casillero</a>
-            <a href="#cartera">Cartera</a>
-            <a href="#modulos">Todo</a>
-          </nav>
-          <Link className="land-nav__enter" to="/login">
-            Entrar
+          <Link className="land-nav__enter" to="/crear-edificio">
+            Crea tu conjunto ahora
           </Link>
         </div>
       </header>
 
-      <section className="land-hero-wrap">
-        <div className="land-hero-bg" aria-hidden="true" />
-        <div className="land-hero">
-          <div className="land-hero__copy" data-reveal="left">
-            <LandingPosterKicker>Conjuntos residenciales</LandingPosterKicker>
-            <LandingPosterTitle
-              tag="h1"
-              align="left"
-              lines={2}
-              className="land-poster-title-wrap--hero"
-              line1="Te ayudamos a que conviertas tu"
-              pill="conjunto residencial"
-              line3="mejor lugar"
-            />
-            <p className="land-lead">
-              Residentes, portería y administración conectados en un solo lugar.
+      <section className="land-hero-wrap land-hero-wrap--banner">
+        <div className="land-hero-image">
+          <div className="land-hero-bg" aria-hidden="true" />
+          <div className="land-hero-banner">
+            <p className="land-hero-banner__eyebrow">Conjuntos residenciales</p>
+            <h1 className="land-hero-banner__title">
+              Transforma la manera de administrar tu conjunto residencial.
+            </h1>
+            <p className="land-hero-banner__lead">
+              Sé parte de la nueva generación de administradores.
             </p>
-            <ul className="land-features">
-              {HERO_FEATURES.map((item, index) => (
-                <li key={item.label} style={{ animationDelay: `${0.12 + index * 0.06}s` }}>
-                  <span className="land-features__icon">
-                    <FeatureIcon name={item.icon} />
-                  </span>
-                  <span>{item.label}</span>
-                </li>
-              ))}
-            </ul>
-            <LandingVinculaCard className="land-vincula-card--hero" />
+            <Link className="land-hero-banner__cta land-nav__enter" to="/crear-edificio">
+              Crea tu conjunto ahora
+            </Link>
           </div>
-          <div className="land-hero__stage" data-reveal="right">
-            <div className="land-device-shell">
-              <PhoneDashboard />
-            </div>
-          </div>
+        </div>
+        <ul className="land-hero-values" aria-label="Beneficios" data-reveal-stagger="hero-values">
+          {HERO_VALUES.map((item, index) => (
+            <li
+              key={item.label}
+              className="land-hero-value"
+              data-reveal-item
+              style={{ '--reveal-i': index }}
+            >
+              <span className="land-hero-value__icon" aria-hidden="true">
+                <HeroValueIcon name={item.icon} />
+              </span>
+              <span className="land-hero-value__label">{item.label}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="land-risks" id="riesgos" aria-labelledby="land-risks-title">
+        <div className="land-risks__inner">
+          <h2 id="land-risks-title" className="land-risks__title" data-reveal="left">
+            Lo que le cuesta a tu conjunto quedarse en lo manual
+          </h2>
+          <ul className="land-risks__strip" aria-label="Consecuencias" data-reveal-stagger="risks">
+            {RISK_ITEMS.map((item, index) => (
+              <li
+                key={item.title}
+                className="land-risks__item"
+                data-reveal-item
+                style={{ '--reveal-i': index }}
+              >
+                <span className="land-risks__item-icon" aria-hidden="true">
+                  <ModuleIcon name={item.icon} />
+                </span>
+                <p className="land-risks__item-title">{item.title}</p>
+                <p className="land-risks__item-note">{item.note}</p>
+              </li>
+            ))}
+          </ul>
+          <Link className="land-risks__cta land-nav__enter" to="/crear-edificio" data-reveal="fade">
+            Crea tu conjunto ahora
+          </Link>
         </div>
       </section>
 
-      <div className="land-ticker" aria-hidden="true" data-reveal="fade">
-        <div className="land-ticker__track">
-          {[...MODULES, ...MODULES].map((item, index) => (
-            <span key={`${item.title}-${index}`}>{item.title}</span>
-          ))}
+      <section className="land-value-prop" id="propuesta" aria-labelledby="land-value-prop-title">
+        <header className="land-value-prop__head" data-reveal="impact">
+          <h2 id="land-value-prop-title" className="land-value-prop__title">
+            Más organización para ti. Una mejor experiencia para todos.
+          </h2>
+          <p className="land-value-prop__lead">
+            <span className="land-value-prop__lead-line">
+              Organiza las operaciones, consulta la información y mantén conectada a tu comunidad
+            </span>
+            <span className="land-value-prop__lead-line">
+              desde una plataforma diseñada para las necesidades reales de los conjuntos residenciales.
+            </span>
+          </p>
+        </header>
+        <div className="land-value-prop__media" data-reveal="right" aria-hidden="true" />
+        <div className="land-value-prop__body">
+          <ul className="land-value-prop__cards" data-reveal-stagger="value-cards">
+            {VALUE_PROP_POINTS.map((item, index) => (
+              <li
+                key={item.title ?? item.titleLines?.join(' ')}
+                className="land-value-prop__card"
+                data-reveal-item
+                style={{ '--reveal-i': index }}
+              >
+                <span className="land-value-prop__card-icon" aria-hidden="true">
+                  <ModuleIcon name={item.icon} />
+                </span>
+                <h3>
+                  {item.titleLines ? (
+                    item.titleLines.map((line) => (
+                      <span key={line} className="land-value-prop__card-title-line">
+                        {line}
+                      </span>
+                    ))
+                  ) : (
+                    item.title
+                  )}
+                </h3>
+                {item.text ? <p>{item.text}</p> : null}
+                {item.bullets ? (
+                  <ul className="land-value-prop__card-list">
+                    {item.bullets.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <Link className="land-value-prop__cta land-nav__enter" to="/crear-edificio" data-reveal="zoom">
+            Crea tu conjunto ahora
+          </Link>
         </div>
-      </div>
+      </section>
 
+      <section className="land-guide" id="guia" aria-labelledby="land-guide-title">
+        <div className="land-guide__layout">
+          <div className="land-guide__copy" data-reveal="left">
+            <div className="land-guide__heading">
+              <div className="land-guide__logo">
+                <Logo size="md" />
+              </div>
+              <h2 id="land-guide-title" className="land-guide__title">
+                Conocemos la presión de una asamblea, y sabemos que las filas en portería y las carteras que
+                no dejan de subir son frustantes.
+              </h2>
+            </div>
+            <p className="land-guide__story">
+              Rentados nació escuchando a administradores y equipos de portería en Colombia.
+            </p>
+          </div>
+          <ul className="land-guide__credentials" data-reveal-stagger="guide-creds">
+            {GUIDE_CREDENTIALS.map((item, index) => (
+              <li
+                key={item.id}
+                className="land-guide__credential"
+                data-reveal-item
+                style={{ '--reveal-i': index }}
+              >
+                <span className="land-guide__credential-icon" aria-hidden="true">
+                  <ModuleIcon name={item.icon} />
+                </span>
+                <div className="land-guide__credential-body">
+                  {item.pre ? <p className="land-guide__credential-pre">{item.pre}</p> : null}
+                  <p className="land-guide__credential-title">{item.title}</p>
+                  {item.subtitle ? (
+                    <p className="land-guide__credential-sub">{item.subtitle}</p>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <aside
+            className="land-guide__download"
+            aria-labelledby="land-guide-download-title"
+            data-reveal="right"
+          >
+            <h3 id="land-guide-download-title" className="land-guide__download-title">
+              Descarga la App ahora
+            </h3>
+            <div className="land-guide__download-stores">
+              <div className="land-guide__store-block">
+                <img
+                  className="land-guide__store-badge"
+                  src={STORE_BADGE_APP_STORE}
+                  alt="Disponible en App Store"
+                  width={158}
+                  height={48}
+                  loading="lazy"
+                  decoding="async"
+                />
+                <img
+                  className="land-guide__store-qr"
+                  src={RENTADOS_QR_IOS}
+                  alt="QR para descargar Rentados en App Store"
+                  width={124}
+                  height={124}
+                  loading="lazy"
+                  decoding="async"
+                />
+                <a
+                  className="land-guide__download-btn land-nav__enter"
+                  href={RENTADOS_APP_STORE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Descárgala para iPhone
+                </a>
+              </div>
+              <div className="land-guide__store-block">
+                <img
+                  className="land-guide__store-badge"
+                  src={STORE_BADGE_GOOGLE_PLAY}
+                  alt="Disponible en Google Play"
+                  width={158}
+                  height={48}
+                  loading="lazy"
+                  decoding="async"
+                />
+                <img
+                  className="land-guide__store-qr"
+                  src={RENTADOS_QR_ANDROID}
+                  alt="QR para descargar Rentados en Google Play"
+                  width={124}
+                  height={124}
+                  loading="lazy"
+                  decoding="async"
+                />
+                <a
+                  className="land-guide__download-btn land-nav__enter"
+                  href={RENTADOS_PLAY_STORE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Descárgala para Android
+                </a>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section className="land-how-it-works" id="como-funciona" aria-labelledby="land-how-it-works-title">
+        <p id="land-how-it-works-title" className="land-how-it-works__intro" data-reveal="fade">
+          Cómo funciona:
+        </p>
+        <LandingVinculaSteps className="land-vincula-flow--section" staggerReveal="vincula-steps" />
+      </section>
+
+      <section className="land-read-more" id="detalle" aria-labelledby="land-read-more-heading">
+        <LandReadMoreStory />
+      </section>
+
+      <LandingDeviceGallery />
+
+      {SHOW_LANDING_LOWER_SECTIONS ? (
+      <>
       <section className="land-portals-wrap" id="cartera">
         <div className="land-portals-scene">
           <div className="land-portals-scene__photo" aria-hidden="true" data-reveal="right" />
@@ -1098,34 +1566,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <ShowcaseDevices
-        ariaLabel="Demos en tablet, iPhone y Android — portería"
-        tabletSrc={SHOWCASE_IPAD_VIDEO}
-        iphoneSrc={SHOWCASE_IPHONE_VIDEO}
-        androidSrc={SHOWCASE_ANDROID_VIDEO}
-      />
-
-      <section className="land-dashboard" aria-label="Comunicaciones del conjunto">
-        <header className="land-dashboard__head" data-reveal>
-          <LandingPosterKicker>App del residente</LandingPosterKicker>
-          <h2>Centraliza las comunicaciones.</h2>
-        </header>
-        <div className="land-dashboard__statement" data-reveal="zoom">
-          <p className="land-dashboard__statement-text">
-            Notifica a los residentes los <strong>eventos y novedades</strong> del conjunto de manera{' '}
-            <strong>fácil y organizada</strong>.
-          </p>
-        </div>
-      </section>
-
-      <ShowcaseDevices
-        ariaLabel="Demos en tablet, iPhone y Android — módulos"
-        className="land-showcase-devices--before-modules"
-        tabletSrc={SHOWCASE_MODULES_TABLET_VIDEO}
-        iphoneSrc={SHOWCASE_MODULES_IPHONE_VIDEO}
-        androidSrc={SHOWCASE_MODULES_ANDROID_VIDEO}
-      />
-
       <section className="land-solutions land-solutions--cta" id="modulos">
         <div className="land-solutions__head" data-reveal="zoom">
           <LandingPosterKicker>Da el siguiente paso</LandingPosterKicker>
@@ -1149,15 +1589,10 @@ export default function LandingPage() {
           <LandingVinculaSolutionsCta />
         </div>
       </section>
+      </>
+      ) : null}
 
-      <footer className="land-foot" data-reveal="fade">
-        <span>Rentados</span>
-        <nav aria-label="Información">
-          <Link to="/privacidad">Privacidad</Link>
-          <Link to="/soporte">Soporte</Link>
-          <Link to="/login">Iniciar sesión</Link>
-        </nav>
-      </footer>
+      <LandingFooter />
     </div>
   );
 }

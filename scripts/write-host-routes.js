@@ -9,6 +9,7 @@ const routes = [
   'soporte',
   'conocenos',
   'lead',
+  'crear-edificio',
   'marketing',
   'login',
   'admin',
